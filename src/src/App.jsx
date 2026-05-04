@@ -1,12 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const SUPABASE_URL = "https://gqdxveunrlkjpryabexd.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZHh2ZXVucmxranByeWFiZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MDcxMTIsImV4cCI6MjA5MzExMn0.AudkiJsUAc6naoMeNJI0Qu4p8z8UXxRMf4YgR0gc3SQ";
@@ -18,7 +11,168 @@ const emptyQuestion = {
   choicesText: "",
   correctAnswer: "",
   unit: "",
-  explanation: "",
+};
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    padding: 16,
+    background: "#f6f7f9",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    color: "#111827",
+  },
+  container: {
+    maxWidth: 960,
+    margin: "0 auto",
+  },
+  card: {
+    background: "white",
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+  },
+  row: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    alignItems: "center",
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    marginBottom: 16,
+  },
+  button: {
+    padding: "10px 14px",
+    border: "1px solid #d1d5db",
+    borderRadius: 8,
+    background: "white",
+    cursor: "pointer",
+    fontSize: 14,
+  },
+  primaryButton: {
+    padding: "10px 14px",
+    border: "1px solid #2563eb",
+    borderRadius: 8,
+    background: "#2563eb",
+    color: "white",
+    cursor: "pointer",
+    fontSize: 14,
+  },
+  dangerButton: {
+    padding: "10px 14px",
+    border: "1px solid #dc2626",
+    borderRadius: 8,
+    background: "#dc2626",
+    color: "white",
+    cursor: "pointer",
+    fontSize: 14,
+  },
+  disabledButton: {
+    padding: "10px 14px",
+    border: "1px solid #d1d5db",
+    borderRadius: 8,
+    background: "#e5e7eb",
+    color: "#6b7280",
+    cursor: "not-allowed",
+    fontSize: 14,
+  },
+  choiceButton: {
+    width: "100%",
+    minHeight: 52,
+    textAlign: "left",
+    padding: 12,
+    border: "1px solid #d1d5db",
+    borderRadius: 10,
+    background: "white",
+    cursor: "pointer",
+    fontSize: 16,
+  },
+  correctChoice: {
+    width: "100%",
+    minHeight: 52,
+    textAlign: "left",
+    padding: 12,
+    border: "1px solid #16a34a",
+    borderRadius: 10,
+    background: "#dcfce7",
+    cursor: "not-allowed",
+    fontSize: 16,
+  },
+  wrongChoice: {
+    width: "100%",
+    minHeight: 52,
+    textAlign: "left",
+    padding: 12,
+    border: "1px solid #dc2626",
+    borderRadius: 10,
+    background: "#fee2e2",
+    cursor: "not-allowed",
+    fontSize: 16,
+  },
+  input: {
+    width: "100%",
+    padding: 10,
+    border: "1px solid #d1d5db",
+    borderRadius: 8,
+    fontSize: 14,
+    boxSizing: "border-box",
+  },
+  textarea: {
+    width: "100%",
+    minHeight: 100,
+    padding: 10,
+    border: "1px solid #d1d5db",
+    borderRadius: 8,
+    fontSize: 14,
+    boxSizing: "border-box",
+    fontFamily: "inherit",
+  },
+  label: {
+    display: "block",
+    fontWeight: 600,
+    marginBottom: 6,
+  },
+  badge: {
+    display: "inline-block",
+    padding: "3px 8px",
+    borderRadius: 999,
+    border: "1px solid #d1d5db",
+    fontSize: 12,
+    background: "#f9fafb",
+  },
+  error: {
+    padding: 10,
+    border: "1px solid #fecaca",
+    background: "#fef2f2",
+    color: "#991b1b",
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  success: {
+    padding: 10,
+    border: "1px solid #bbf7d0",
+    background: "#f0fdf4",
+    color: "#166534",
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  grid2: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 12,
+  },
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+    gap: 12,
+    marginBottom: 16,
+  },
 };
 
 function getMode() {
@@ -112,6 +266,7 @@ function parseCsvText(text) {
 }
 
 function formatDateTime(iso) {
+  if (!iso) return "-";
   return new Intl.DateTimeFormat("ja-JP", {
     month: "2-digit",
     day: "2-digit",
@@ -244,59 +399,53 @@ function runSelfTests() {
 
 function StudentQuizView({ questions, currentQuestion, currentIndex, quizQueue, currentChoices, selectedChoice, answered, startQuiz, answerQuestion, nextQuestion, loading }) {
   return (
-    <div className="space-y-5">
-      <Card className="rounded-2xl shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>英語4択トレーニング</CardTitle>
-          <Button onClick={startQuiz} disabled={questions.length === 0 || loading}>出題開始</Button>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {!currentQuestion ? (
-            <div className="rounded-2xl border border-dashed p-8 text-center text-slate-500">
-              出題開始を押すと、ランダムに問題が出ます。
-            </div>
-          ) : (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline">{currentIndex + 1} / {quizQueue.length}</Badge>
-              </div>
-              <p className="whitespace-pre-wrap rounded-xl bg-white p-4 text-base leading-7 shadow-sm">{currentQuestion.questionText}</p>
-              <div className="grid gap-3 md:grid-cols-2">
-                {currentChoices.map((choice) => {
-                  const isSelected = selectedChoice === choice;
-                  const isCorrect = choice === currentQuestion.correctAnswer;
-                  const showCorrect = answered && isCorrect;
-                  const showWrong = answered && isSelected && !isCorrect;
-                  return (
-                    <Button
-                      key={choice}
-                      type="button"
-                      variant={showCorrect ? "default" : showWrong ? "destructive" : "outline"}
-                      className="h-auto justify-start whitespace-normal rounded-xl p-4 text-left"
-                      onClick={() => answerQuestion(choice)}
-                      disabled={answered}
-                    >
-                      <span className="flex items-start gap-2">
-                        {showCorrect && <span>○</span>}
-                        {showWrong && <span>×</span>}
-                        <span>{choice}</span>
-                      </span>
-                    </Button>
-                  );
-                })}
-              </div>
-              {answered && (
-                <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
-                  <div className="font-semibold">{selectedChoice === currentQuestion.correctAnswer ? "正解" : "不正解"}</div>
-                  <div className="text-sm text-slate-700">問題番号：{currentQuestion.id}</div>
-                  <div className="text-sm text-slate-700">正解：{currentQuestion.correctAnswer}</div>
-                  <Button onClick={nextQuestion} className="w-full md:w-auto">次の問題へ</Button>
-                </div>
-              )}
+    <div style={styles.card}>
+      <div style={styles.header}>
+        <h2 style={{ margin: 0 }}>英語4択トレーニング</h2>
+        <button style={questions.length === 0 || loading ? styles.disabledButton : styles.primaryButton} onClick={startQuiz} disabled={questions.length === 0 || loading}>
+          出題開始
+        </button>
+      </div>
+
+      {!currentQuestion ? (
+        <div style={{ padding: 24, textAlign: "center", color: "#6b7280", border: "1px dashed #d1d5db", borderRadius: 12 }}>
+          出題開始を押すと、ランダムに問題が出ます。
+        </div>
+      ) : (
+        <div>
+          <div style={{ marginBottom: 12 }}>
+            <span style={styles.badge}>{currentIndex + 1} / {quizQueue.length}</span>
+          </div>
+
+          <div style={{ ...styles.card, background: "#ffffff", fontSize: 18, lineHeight: 1.7 }}>
+            {currentQuestion.questionText}
+          </div>
+
+          <div style={styles.grid2}>
+            {currentChoices.map((choice) => {
+              const isSelected = selectedChoice === choice;
+              const isCorrect = choice === currentQuestion.correctAnswer;
+              const showCorrect = answered && isCorrect;
+              const showWrong = answered && isSelected && !isCorrect;
+              const buttonStyle = showCorrect ? styles.correctChoice : showWrong ? styles.wrongChoice : styles.choiceButton;
+              return (
+                <button key={choice} type="button" style={buttonStyle} onClick={() => answerQuestion(choice)} disabled={answered}>
+                  {showCorrect ? "○ " : ""}{showWrong ? "× " : ""}{choice}
+                </button>
+              );
+            })}
+          </div>
+
+          {answered && (
+            <div style={{ ...styles.card, marginTop: 16 }}>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>{selectedChoice === currentQuestion.correctAnswer ? "正解" : "不正解"}</div>
+              <div>問題番号：{currentQuestion.id}</div>
+              <div>正解：{currentQuestion.correctAnswer}</div>
+              <button style={{ ...styles.primaryButton, marginTop: 12 }} onClick={nextQuestion}>次の問題へ</button>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      )}
     </div>
   );
 }
@@ -320,6 +469,7 @@ export default function OnlineTutorQuizApp() {
   const [showSavedQuestions, setShowSavedQuestions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [dbError, setDbError] = useState("");
+  const [teacherTab, setTeacherTab] = useState("quiz");
 
   const fetchQuestions = async () => {
     setLoading(true);
@@ -567,51 +717,45 @@ export default function OnlineTutorQuizApp() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <div style={styles.page}>
+      <div style={styles.container}>
+        <div style={styles.header}>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">オンライン家庭教師・4択練習アプリ</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              {isTeacher ? "先生用：問題管理とログ確認" : "生徒用：英語の穴埋め4択トレーニング"}
-            </p>
+            <h1 style={{ marginBottom: 4 }}>オンライン家庭教師・4択練習アプリ</h1>
+            <p style={{ color: "#6b7280", marginTop: 0 }}>{isTeacher ? "先生用：問題管理とログ確認" : "生徒用：英語の穴埋め4択トレーニング"}</p>
           </div>
-          <div className="flex flex-col gap-2 md:flex-row">
-            <Button variant="outline" onClick={refreshAll}>再読み込み</Button>
+          <div style={styles.row}>
+            <button style={styles.button} onClick={refreshAll}>再読み込み</button>
             {isTeacher && (
-              <Button variant="outline" onClick={() => setShowSavedQuestions((prev) => !prev)}>
+              <button style={styles.button} onClick={() => setShowSavedQuestions((prev) => !prev)}>
                 {showSavedQuestions ? "保存済み問題を閉じる" : "保存済み問題を確認"}
-              </Button>
+              </button>
             )}
           </div>
         </div>
 
-        {dbError && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{dbError}</div>}
-        {loading && <div className="rounded-xl border bg-white p-3 text-sm text-slate-600">Supabaseから読み込み中...</div>}
+        {dbError && <div style={styles.error}>{dbError}</div>}
+        {loading && <div style={styles.card}>Supabaseから読み込み中...</div>}
 
         {isTeacher && showSavedQuestions && (
-          <Card className="rounded-2xl shadow-sm">
-            <CardHeader>
-              <CardTitle>保存済み問題一覧</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {questions.length === 0 ? (
-                <div className="rounded-xl border border-dashed p-6 text-center text-slate-500">保存済みの問題はありません</div>
-              ) : (
-                questions.map((question) => (
-                  <div key={`saved-${question.id}-${question.createdAt}`} className="rounded-xl border bg-white p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">{question.id}</Badge>
-                      <Badge variant="secondary">{question.unit || "未分類"}</Badge>
-                    </div>
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{question.questionText}</p>
-                    <div className="mt-2 text-xs text-slate-500">選択肢：{question.choices.join(" / ")}</div>
-                    <div className="mt-1 text-xs font-medium text-slate-700">正解：{question.correctAnswer}</div>
+          <div style={styles.card}>
+            <h2>保存済み問題一覧</h2>
+            {questions.length === 0 ? (
+              <div>保存済みの問題はありません</div>
+            ) : (
+              questions.map((question) => (
+                <div key={`saved-${question.id}-${question.createdAt}`} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+                  <div style={styles.row}>
+                    <span style={styles.badge}>{question.id}</span>
+                    <span style={styles.badge}>{question.unit || "未分類"}</span>
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+                  <p>{question.questionText}</p>
+                  <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{question.choices.join(" / ")}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>正解：{question.correctAnswer}</div>
+                </div>
+              ))
+            )}
+          </div>
         )}
 
         {!isTeacher ? (
@@ -629,209 +773,176 @@ export default function OnlineTutorQuizApp() {
             loading={loading}
           />
         ) : (
-          <>
-            <div className="grid gap-4 md:grid-cols-4">
-              <Card className="rounded-2xl shadow-sm">
-                <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-500">登録問題数</CardTitle></CardHeader>
-                <CardContent className="text-2xl font-bold">{questions.length}問</CardContent>
-              </Card>
-              <Card className="rounded-2xl shadow-sm">
-                <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-500">解答数</CardTitle></CardHeader>
-                <CardContent className="text-2xl font-bold">{stats.total}回</CardContent>
-              </Card>
-              <Card className="rounded-2xl shadow-sm">
-                <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-500">正解数</CardTitle></CardHeader>
-                <CardContent className="text-2xl font-bold">{stats.correct}回</CardContent>
-              </Card>
-              <Card className="rounded-2xl shadow-sm">
-                <CardHeader className="pb-2"><CardTitle className="text-sm text-slate-500">正答率</CardTitle></CardHeader>
-                <CardContent className="text-2xl font-bold">{stats.rate}%</CardContent>
-              </Card>
+          <div>
+            <div style={styles.statsGrid}>
+              <div style={styles.card}><div>登録問題数</div><strong style={{ fontSize: 24 }}>{questions.length}問</strong></div>
+              <div style={styles.card}><div>解答数</div><strong style={{ fontSize: 24 }}>{stats.total}回</strong></div>
+              <div style={styles.card}><div>正解数</div><strong style={{ fontSize: 24 }}>{stats.correct}回</strong></div>
+              <div style={styles.card}><div>正答率</div><strong style={{ fontSize: 24 }}>{stats.rate}%</strong></div>
             </div>
 
-            <Tabs defaultValue="quiz" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-6">
-                <TabsTrigger value="quiz">出題確認</TabsTrigger>
-                <TabsTrigger value="import">取込</TabsTrigger>
-                <TabsTrigger value="add">手入力</TabsTrigger>
-                <TabsTrigger value="list">問題一覧</TabsTrigger>
-                <TabsTrigger value="logs">ログ</TabsTrigger>
-                <TabsTrigger value="tests">テスト</TabsTrigger>
-              </TabsList>
+            <div style={{ ...styles.row, marginBottom: 16 }}>
+              {[
+                ["quiz", "出題確認"],
+                ["import", "取込"],
+                ["add", "手入力"],
+                ["list", "問題一覧"],
+                ["logs", "ログ"],
+                ["tests", "テスト"],
+              ].map(([key, label]) => (
+                <button key={key} style={teacherTab === key ? styles.primaryButton : styles.button} onClick={() => setTeacherTab(key)}>
+                  {label}
+                </button>
+              ))}
+            </div>
 
-              <TabsContent value="quiz">
-                <StudentQuizView
-                  questions={questions}
-                  currentQuestion={currentQuestion}
-                  currentIndex={currentIndex}
-                  quizQueue={quizQueue}
-                  currentChoices={currentChoices}
-                  selectedChoice={selectedChoice}
-                  answered={answered}
-                  startQuiz={startQuiz}
-                  answerQuestion={answerQuestion}
-                  nextQuestion={nextQuestion}
-                  loading={loading}
-                />
-              </TabsContent>
+            {teacherTab === "quiz" && (
+              <StudentQuizView
+                questions={questions}
+                currentQuestion={currentQuestion}
+                currentIndex={currentIndex}
+                quizQueue={quizQueue}
+                currentChoices={currentChoices}
+                selectedChoice={selectedChoice}
+                answered={answered}
+                startQuiz={startQuiz}
+                answerQuestion={answerQuestion}
+                nextQuestion={nextQuestion}
+                loading={loading}
+              />
+            )}
 
-              <TabsContent value="import">
-                <Card className="rounded-2xl shadow-sm">
-                  <CardHeader><CardTitle>CSV取り込み</CardTitle></CardHeader>
-                  <CardContent className="space-y-4">
-                    <Input type="file" accept=".csv" onChange={(e) => handleCsvImport(e.target.files ? e.target.files[0] : null)} />
-                    {importMessage && <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700">{importMessage}</div>}
-                    {importError && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{importError}</div>}
-                    <p className="text-xs text-slate-500">列名は id, question, choice1, choice2, choice3, choice4, answer, unit にしてください。answerはchoice1〜4のどれかと完全一致させます。</p>
-                  </CardContent>
-                </Card>
-              </TabsContent>
+            {teacherTab === "import" && (
+              <div style={styles.card}>
+                <h2>CSV取り込み</h2>
+                <input type="file" accept=".csv" onChange={(e) => handleCsvImport(e.target.files ? e.target.files[0] : null)} />
+                {importMessage && <div style={styles.success}>{importMessage}</div>}
+                {importError && <div style={styles.error}>{importError}</div>}
+                <p style={{ fontSize: 13, color: "#6b7280" }}>列名は id, question, choice1, choice2, choice3, choice4, answer, unit にしてください。</p>
+              </div>
+            )}
 
-              <TabsContent value="add">
-                <Card className="rounded-2xl shadow-sm">
-                  <CardHeader><CardTitle>問題を手入力</CardTitle></CardHeader>
-                  <CardContent>
-                    <form onSubmit={addQuestion} className="space-y-4">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label>問題番号</Label>
-                          <Input value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="例: PO003" />
+            {teacherTab === "add" && (
+              <div style={styles.card}>
+                <h2>問題を手入力</h2>
+                <form onSubmit={addQuestion}>
+                  <div style={styles.grid2}>
+                    <div>
+                      <label style={styles.label}>問題番号</label>
+                      <input style={styles.input} value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="例: PO003" />
+                    </div>
+                    <div>
+                      <label style={styles.label}>単元・タグ</label>
+                      <input style={styles.input} value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="例: 時制" />
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <label style={styles.label}>問題文</label>
+                    <textarea style={styles.textarea} value={form.questionText} onChange={(e) => setForm({ ...form, questionText: e.target.value })} placeholder="Everyone _____about his success in business." />
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <label style={styles.label}>選択肢（1行に1つ・必ず4つ）</label>
+                    <textarea style={styles.textarea} value={form.choicesText} onChange={(e) => setForm({ ...form, choicesText: e.target.value })} placeholder={`is known\nis knowing\nknow\nknows`} />
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <label style={styles.label}>正解（選択肢と完全一致）</label>
+                    <input style={styles.input} value={form.correctAnswer} onChange={(e) => setForm({ ...form, correctAnswer: e.target.value })} placeholder="knows" />
+                  </div>
+                  {formError && <div style={styles.error}>{formError}</div>}
+                  <button style={{ ...styles.primaryButton, marginTop: 12 }} type="submit">Supabaseに保存</button>
+                </form>
+              </div>
+            )}
+
+            {teacherTab === "list" && (
+              <div style={styles.card}>
+                <h2>問題一覧</h2>
+                {questions.map((question) => (
+                  <div key={`${question.id}-${question.createdAt}`} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+                    <div style={styles.row}>
+                      <strong>{question.id}</strong>
+                      <span style={styles.badge}>{question.unit || "未分類"}</span>
+                    </div>
+                    <p>{question.questionText}</p>
+                    <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{question.choices.join(" / ")}</div>
+                    <div style={{ fontWeight: 700 }}>正解：{question.correctAnswer}</div>
+                    <button style={{ ...styles.button, marginTop: 8 }} onClick={() => deleteQuestion()}>削除（現在無効）</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {teacherTab === "logs" && (
+              <div>
+                <div style={styles.card}>
+                  <div style={styles.header}>
+                    <h2>解答ログ</h2>
+                    <div style={styles.row}>
+                      <button style={styles.button} onClick={fetchLogs}>更新</button>
+                      <button style={logs.length === 0 ? styles.disabledButton : styles.button} onClick={exportLogs} disabled={logs.length === 0}>CSV</button>
+                    </div>
+                  </div>
+                  {logs.length === 0 ? (
+                    <div>まだ解答ログがありません</div>
+                  ) : (
+                    logs.map((log) => (
+                      <div key={log.id} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+                        <div style={styles.row}>
+                          <span style={styles.badge}>{log.is_correct ? "正解" : "不正解"}</span>
+                          <span style={styles.badge}>{log.question_id}</span>
+                          <span style={styles.badge}>{log.unit}</span>
+                          <span style={{ fontSize: 12, color: "#6b7280" }}>{formatDateTime(log.answered_at)}</span>
                         </div>
-                        <div className="space-y-2">
-                          <Label>単元・タグ</Label>
-                          <Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="例: 時制" />
-                        </div>
+                        <div>選んだ選択肢：{log.selected_choice}</div>
+                        <div>正解：{log.correct_answer}</div>
                       </div>
-                      <div className="space-y-2">
-                        <Label>問題文</Label>
-                        <Textarea className="min-h-32" value={form.questionText} onChange={(e) => setForm({ ...form, questionText: e.target.value })} placeholder="Everyone _____about his success in business." />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>選択肢（1行に1つ・必ず4つ）</Label>
-                        <Textarea className="min-h-32" value={form.choicesText} onChange={(e) => setForm({ ...form, choicesText: e.target.value })} placeholder={`is known\nis knowing\nknow\nknows`} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>正解（選択肢と完全一致）</Label>
-                        <Input value={form.correctAnswer} onChange={(e) => setForm({ ...form, correctAnswer: e.target.value })} placeholder="knows" />
-                      </div>
-                      {formError && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{formError}</div>}
-                      <Button type="submit">＋ Supabaseに保存</Button>
-                    </form>
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                    ))
+                  )}
+                </div>
 
-              <TabsContent value="list">
-                <Card className="rounded-2xl shadow-sm">
-                  <CardHeader><CardTitle>問題一覧</CardTitle></CardHeader>
-                  <CardContent className="space-y-3">
-                    {questions.map((question) => (
-                      <div key={`${question.id}-${question.createdAt}`} className="rounded-2xl border bg-white p-4 shadow-sm">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="space-y-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="font-semibold">{question.id}</div>
-                              <Badge variant="secondary">{question.unit || "未分類"}</Badge>
-                            </div>
-                            <p className="whitespace-pre-wrap text-sm text-slate-700">{question.questionText}</p>
-                            <div className="text-sm text-slate-600">選択肢：{question.choices.join(" / ")}</div>
-                            <div className="text-sm font-medium">正解：{question.correctAnswer}</div>
-                          </div>
-                          <Button variant="ghost" size="icon" onClick={() => deleteQuestion()} aria-label="問題を削除">×</Button>
+                <div style={styles.grid2}>
+                  <div style={styles.card}>
+                    <h3>苦手傾向</h3>
+                    {weakUnits.length === 0 ? (
+                      <div>ログが増えると単元別のミス傾向を表示します。</div>
+                    ) : (
+                      weakUnits.map((unit) => (
+                        <div key={unit.unit} style={{ marginBottom: 8 }}>
+                          <strong>{unit.unit}</strong>：ミス {unit.wrong} / {unit.total}回、不正解率 {unit.wrongRate}%
                         </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="logs">
-                <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-                  <Card className="rounded-2xl shadow-sm">
-                    <CardHeader className="flex flex-row items-center justify-between">
-                      <CardTitle>解答ログ</CardTitle>
-                      <div className="flex gap-2">
-                        <Button variant="outline" onClick={fetchLogs}>更新</Button>
-                        <Button variant="outline" onClick={exportLogs} disabled={logs.length === 0}>CSV</Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {logs.length === 0 ? (
-                        <div className="rounded-xl border border-dashed p-8 text-center text-slate-500">まだ解答ログがありません</div>
-                      ) : (
-                        logs.map((log) => (
-                          <div key={log.id} className="rounded-2xl border bg-white p-4 shadow-sm">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant={log.is_correct ? "default" : "destructive"}>{log.is_correct ? "正解" : "不正解"}</Badge>
-                              <Badge variant="outline">{log.question_id}</Badge>
-                              <Badge variant="secondary">{log.unit}</Badge>
-                              <span className="text-xs text-slate-500">{formatDateTime(log.answered_at)}</span>
-                            </div>
-                            <div className="mt-2 text-sm text-slate-700">選んだ選択肢：{log.selected_choice}</div>
-                            <div className="text-sm text-slate-700">正解：{log.correct_answer}</div>
-                          </div>
-                        ))
-                      )}
-                    </CardContent>
-                  </Card>
-                  <div className="space-y-4">
-                    <Card className="rounded-2xl shadow-sm">
-                      <CardHeader><CardTitle>苦手傾向</CardTitle></CardHeader>
-                      <CardContent className="space-y-3">
-                        {weakUnits.length === 0 ? (
-                          <div className="text-sm text-slate-500">ログが増えると単元別のミス傾向を表示します。</div>
-                        ) : (
-                          weakUnits.map((unit) => (
-                            <div key={unit.unit} className="rounded-xl border bg-white p-3">
-                              <div className="font-medium">{unit.unit}</div>
-                              <div className="mt-1 text-sm text-slate-600">ミス {unit.wrong} / {unit.total}回、不正解率 {unit.wrongRate}%</div>
-                            </div>
-                          ))
-                        )}
-                      </CardContent>
-                    </Card>
-                    <Card className="rounded-2xl shadow-sm">
-                      <CardHeader><CardTitle>よく間違えた問題番号</CardTitle></CardHeader>
-                      <CardContent className="space-y-3">
-                        {wrongQuestionCounts.length === 0 ? (
-                          <div className="text-sm text-slate-500">不正解ログが増えると問題番号別に表示します。</div>
-                        ) : (
-                          wrongQuestionCounts.map(([id, count]) => (
-                            <div key={id} className="rounded-xl border bg-white p-3">
-                              <div className="font-medium">{id}</div>
-                              <div className="mt-1 text-sm text-slate-600">ミス {count}回</div>
-                            </div>
-                          ))
-                        )}
-                      </CardContent>
-                    </Card>
+                      ))
+                    )}
+                  </div>
+                  <div style={styles.card}>
+                    <h3>よく間違えた問題番号</h3>
+                    {wrongQuestionCounts.length === 0 ? (
+                      <div>不正解ログが増えると問題番号別に表示します。</div>
+                    ) : (
+                      wrongQuestionCounts.map(([id, count]) => (
+                        <div key={id} style={{ marginBottom: 8 }}>
+                          <strong>{id}</strong>：ミス {count}回
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
-              </TabsContent>
+              </div>
+            )}
 
-              <TabsContent value="tests">
-                <Card className="rounded-2xl shadow-sm">
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>簡易テスト</CardTitle>
-                    <Button variant="outline" onClick={() => setShowTests((prev) => !prev)}>{showTests ? "隠す" : "表示"}</Button>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="mb-4 text-sm text-slate-600">最低限のロジックテストです。</p>
-                    {showTests && (
-                      <div className="space-y-2">
-                        {testResults.map((test) => (
-                          <div key={test.name} className="flex items-center justify-between rounded-xl border bg-white p-3 text-sm">
-                            <span>{test.name}</span>
-                            <Badge variant={test.pass ? "default" : "destructive"}>{test.pass ? "PASS" : "FAIL"}</Badge>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-          </>
+            {teacherTab === "tests" && (
+              <div style={styles.card}>
+                <div style={styles.header}>
+                  <h2>簡易テスト</h2>
+                  <button style={styles.button} onClick={() => setShowTests((prev) => !prev)}>{showTests ? "隠す" : "表示"}</button>
+                </div>
+                {showTests && testResults.map((test) => (
+                  <div key={test.name} style={{ borderTop: "1px solid #e5e7eb", padding: 8 }}>
+                    {test.pass ? "PASS" : "FAIL"}：{test.name}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
