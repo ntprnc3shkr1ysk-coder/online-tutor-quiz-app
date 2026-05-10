@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://gqdxveunrlkjpryabexd.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZHh2ZXVucmxranByeWFiZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MDcxMTIsImV4cCI6MjA5MzI4MzExMn0.AudkiJsUAc6naoMeNJI0Qu4p8z8UXxRMf4YgR0gc3SQ";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZHh2ZXVucmxranByeWFiZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MDcxMTIsImV4cCI6MjA5MzExMn0.AudkiJsUAc6naoMeNJI0Qu4p8z8UXxRMf4YgR0gc3SQ";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const emptyQuestion = {
@@ -268,6 +268,7 @@ function parseCsvText(text) {
 function formatDateTime(iso) {
   if (!iso) return "-";
   return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -282,7 +283,7 @@ function escapeCsvCell(value) {
 function buildCsv(logs) {
   const header = ["日時", "問題番号", "単元", "選んだ選択肢", "正解", "正誤"];
   const rows = logs.map((log) => [
-    new Date(log.answered_at || log.answeredAt).toLocaleString("ja-JP"),
+    new Date(log.answered_at || log.answeredAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }),
     log.question_id || log.questionId,
     log.unit,
     log.selected_choice || log.selectedChoice,
@@ -702,13 +703,27 @@ export default function OnlineTutorQuizApp() {
 
   const exportLogs = () => {
     const csv = buildCsv(logs);
-    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = "answer_logs.csv";
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const resetAnswerLogs = async () => {
+    const ok = window.confirm("解答ログをすべて削除します。回答数・正解数・正答率もリセットされます。よろしいですか？");
+    if (!ok) return;
+
+    const { error } = await supabase.from("answer_logs").delete().not("id", "is", null);
+    if (error) {
+      setDbError("解答ログのリセットに失敗しました: " + error.message);
+      return;
+    }
+
+    setLogs([]);
+    setDbError("");
   };
 
   const refreshAll = () => {
@@ -880,6 +895,7 @@ export default function OnlineTutorQuizApp() {
                     <div style={styles.row}>
                       <button style={styles.button} onClick={fetchLogs}>更新</button>
                       <button style={logs.length === 0 ? styles.disabledButton : styles.button} onClick={exportLogs} disabled={logs.length === 0}>CSV</button>
+                      <button style={logs.length === 0 ? styles.disabledButton : styles.dangerButton} onClick={resetAnswerLogs} disabled={logs.length === 0}>ログをリセット</button>
                     </div>
                   </div>
                   {logs.length === 0 ? (
@@ -888,7 +904,7 @@ export default function OnlineTutorQuizApp() {
                     logs.map((log) => (
                       <div key={log.id} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
                         <div style={styles.row}>
-                          <span style={styles.badge}>{log.is_correct ? "正解" : "不正解"}</span>
+                          <span style={log.is_correct ? styles.badge : { ...styles.badge, background: "#fee2e2", border: "1px solid #fca5a5", color: "#991b1b", fontWeight: 700 }}>{log.is_correct ? "正解" : "不正解"}</span>
                           <span style={styles.badge}>{log.question_id}</span>
                           <span style={styles.badge}>{log.unit}</span>
                           <span style={{ fontSize: 12, color: "#6b7280" }}>{formatDateTime(log.answered_at)}</span>
@@ -914,13 +930,13 @@ export default function OnlineTutorQuizApp() {
                     )}
                   </div>
                   <div style={styles.card}>
-                    <h3>よく間違えた問題番号</h3>
+                    <h3>不正解だった問題リスト</h3>
                     {wrongQuestionCounts.length === 0 ? (
-                      <div>不正解ログが増えると問題番号別に表示します。</div>
+                      <div>不正解ログが増えると、問題番号別に表示します。</div>
                     ) : (
                       wrongQuestionCounts.map(([id, count]) => (
-                        <div key={id} style={{ marginBottom: 8 }}>
-                          <strong>{id}</strong>：ミス {count}回
+                        <div key={id} style={{ marginBottom: 8, padding: 8, border: "1px solid #fecaca", background: "#fef2f2", borderRadius: 8 }}>
+                          <strong style={{ color: "#991b1b" }}>{id}</strong>：不正解 {count}回
                         </div>
                       ))
                     )}
