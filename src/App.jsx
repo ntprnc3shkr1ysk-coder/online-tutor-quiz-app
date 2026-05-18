@@ -848,9 +848,9 @@ export default function OnlineTutorQuizApp() {
 
 setImportMessage(`${newQuestions.length}問をSupabaseに保存しました（無効: ${invalidMessages.length}問）`);
         if (invalidMessages.length > 0) {
-          setImportError(`取り込めなかった行があります。
-${invalidMessages.join("
-")}`);
+setImportError(
+  `取り込めなかった行があります。\n${invalidMessages.join("\n")}`
+);
         }
         fetchQuestions();
       } catch (error) {
