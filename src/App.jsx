@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://gqdxveunrlkjpryabexd.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZHh2ZXVucmxranByeWFiZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MDcxMTIsImV4cCI6MjA5MzI4MzExMn0.AudkiJsUAc6naoMeNJI0Qu4p8z8UXxRMf4YgR0gc3SQ";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZHh2ZXVucmxranByeWFiZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MDcxMTIsImV4cCI6MjA5MzExMn0.AudkiJsUAc6naoMeNJI0Qu4p8z8UXxRMf4YgR0gc3SQ";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const APP_VERSION = "1.3.0";
@@ -463,7 +463,22 @@ function runSelfTests() {
   ];
 }
 
-function StudentQuizView({ questions, currentQuestion, currentIndex, quizQueue, currentChoices, selectedChoice, answered, startQuiz, answerQuestion, nextQuestion, loading, wrongAnswers, clearWrongAnswers }) {
+function StudentQuizView({
+  questions,
+  currentQuestion,
+  currentIndex,
+  quizQueue,
+  currentChoices,
+  selectedChoice,
+  answered,
+  startQuiz,
+  answerQuestion,
+  nextQuestion,
+  loading,
+  wrongAnswers = [],
+  clearWrongAnswers = () => {},
+  reviewWrongLogs = [],
+}) {
   return (
     <div>
       <div style={styles.card}>
@@ -536,6 +551,26 @@ function StudentQuizView({ questions, currentQuestion, currentIndex, quizQueue, 
           ))}
         </div>
       )}
+
+      {reviewWrongLogs.length > 0 && (
+        <div style={styles.card}>
+          <h2 style={{ marginTop: 0 }}>これまで間違えた問題</h2>
+          <p style={{ color: "#6b7280", fontSize: 13 }}>過去の解答ログから、不正解だった問題を表示しています。</p>
+          {reviewWrongLogs.map((item) => (
+            <details key={item.logId} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+              <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
+                {item.questionId}：{formatDateTime(item.answeredAt)} に不正解
+              </summary>
+              <div style={{ marginTop: 8 }}>
+                <div style={{ marginBottom: 8 }}>{item.questionText || "問題文を取得できませんでした"}</div>
+                <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.length ? item.choices.join(" / ") : "取得できませんでした"}</div>
+                <div style={{ marginTop: 4 }}>選んだ答え：{item.selectedChoice}</div>
+                <div style={{ fontWeight: 700 }}>正解：{item.correctAnswer}</div>
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -597,7 +632,7 @@ export default function OnlineTutorQuizApp() {
 
   useEffect(() => {
     fetchQuestions();
-    if (isTeacher) fetchLogs();
+    fetchLogs();
   }, [isTeacher]);
 
   const currentQuestion = quizQueue[currentIndex];
@@ -638,6 +673,25 @@ export default function OnlineTutorQuizApp() {
     });
     return Object.entries(countMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
   }, [logs]);
+
+  const reviewWrongLogs = useMemo(() => {
+    return logs
+      .filter((log) => !(log.is_correct || log.isCorrect))
+      .map((log) => {
+        const questionId = log.question_id || log.questionId;
+        const question = questions.find((item) => item.id === questionId);
+        return {
+          logId: log.id,
+          questionId,
+          answeredAt: log.answered_at || log.answeredAt,
+          selectedChoice: log.selected_choice || log.selectedChoice,
+          correctAnswer: log.correct_answer || log.correctAnswer,
+          questionText: question ? question.questionText : "",
+          choices: question ? question.choices : [],
+        };
+      })
+      .slice(0, 30);
+  }, [logs, questions]);
 
   const startQuiz = () => {
     const queue = shuffleArray(questions);
@@ -794,9 +848,9 @@ export default function OnlineTutorQuizApp() {
 
 setImportMessage(`${newQuestions.length}問をSupabaseに保存しました（無効: ${invalidMessages.length}問）`);
         if (invalidMessages.length > 0) {
-setImportError(
-  `取り込めなかった行があります。\n${invalidMessages.join("\n")}`
-);
+          setImportError(`取り込めなかった行があります。
+${invalidMessages.join("
+")}`);
         }
         fetchQuestions();
       } catch (error) {
@@ -808,11 +862,11 @@ setImportError(
 
   const deleteQuestion = async (questionId) => {
     const target = questions.find((question) => question.id === questionId);
-    const ok = window.confirm(
-  `問題 ${questionId} を削除します。${
-    target ? "\n\n" + target.questionText : ""
-  }\n\n解答ログは削除されません。よろしいですか？`
-);
+    const ok = window.confirm(`問題 ${questionId} を削除します。${target ? "
+
+" + target.questionText : ""}
+
+解答ログは削除されません。よろしいですか？`);
     if (!ok) return;
 
     const { error } = await supabase.from("questions").delete().eq("id", questionId);
@@ -927,6 +981,7 @@ setImportError(
             loading={loading}
             wrongAnswers={wrongAnswers}
             clearWrongAnswers={() => setWrongAnswers([])}
+            reviewWrongLogs={reviewWrongLogs}
           />
         ) : (
           <div>
