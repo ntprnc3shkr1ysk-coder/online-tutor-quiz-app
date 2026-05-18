@@ -808,11 +808,11 @@ setImportError(
 
   const deleteQuestion = async (questionId) => {
     const target = questions.find((question) => question.id === questionId);
-    const ok = window.confirm(`問題 ${questionId} を削除します。${target ? "
-
-" + target.questionText : ""}
-
-解答ログは削除されません。よろしいですか？`);
+    const ok = window.confirm(
+  `問題 ${questionId} を削除します。${
+    target ? "\n\n" + target.questionText : ""
+  }\n\n解答ログは削除されません。よろしいですか？`
+);
     if (!ok) return;
 
     const { error } = await supabase.from("questions").delete().eq("id", questionId);
