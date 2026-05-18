@@ -2,11 +2,22 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://gqdxveunrlkjpryabexd.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZHh2ZXVucmxranByeWFiZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MDcxMTIsImV4cCI6MjA5MzI4MzExMn0.AudkiJsUAc6naoMeNJI0Qu4p8z8UXxRMf4YgR0gc3SQ";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZHh2ZXVucmxranByeWFiZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MDcxMTIsImV4cCI6MjA5MzExMn0.AudkiJsUAc6naoMeNJI0Qu4p8z8UXxRMf4YgR0gc3SQ";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.4.0";
 const CHANGELOG = [
+  {
+    version: "1.4.0",
+    date: "2026-05-18",
+    items: [
+      "生徒画面に『間違えた問題』一覧を追加",
+      "先生画面に『間違えた問題』タブを追加",
+      "問題ごとの不正解回数と、問題文・正解・他の選択肢を確認できるように変更",
+      "CSV取り込み時のエラー表示処理を安定化",
+      "問題削除時の確認メッセージ処理を安定化",
+    ],
+  },
   {
     version: "1.3.0",
     date: "2026-05-18",
@@ -458,26 +469,13 @@ function runSelfTests() {
     },
     {
       name: "app version is defined",
-      pass: APP_VERSION === "1.3.0",
+      pass: APP_VERSION === "1.4.0",
     },
   ];
 }
 
-function StudentQuizView({
-  questions,
-  currentQuestion,
-  currentIndex,
-  quizQueue,
-  currentChoices,
-  selectedChoice,
-  answered,
-  startQuiz,
-  answerQuestion,
-  nextQuestion,
-  loading,
-  wrongAnswers = [],
-  clearWrongAnswers = () => {},
-  reviewWrongLogs = [],
+function StudentQuizView({$1reviewWrongLogs = [],
+  wrongQuestionSummary = [],
 }) {
   return (
     <div>
@@ -546,6 +544,25 @@ function StudentQuizView({
                 <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.join(" / ")}</div>
                 <div style={{ marginTop: 4 }}>選んだ答え：{item.selectedChoice}</div>
                 <div style={{ fontWeight: 700 }}>正解：{item.correctAnswer}</div>
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+
+      {wrongQuestionSummary.length > 0 && (
+        <div style={styles.card}>
+          <h2 style={{ marginTop: 0 }}>間違えた問題</h2>
+          <p style={{ color: "#6b7280", fontSize: 13 }}>これまでに不正解だった問題を、問題ごとの回数でまとめています。</p>
+          {wrongQuestionSummary.map((item) => (
+            <details key={item.questionId} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+              <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
+                {item.questionId}：不正解 {item.wrongCount}回
+              </summary>
+              <div style={{ marginTop: 8 }}>
+                <div style={{ marginBottom: 8 }}>{item.questionText || "問題文を取得できませんでした"}</div>
+                <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.length ? item.choices.join(" / ") : "取得できませんでした"}</div>
+                <div style={{ fontWeight: 700, marginTop: 4 }}>正解：{item.correctAnswer || "取得できませんでした"}</div>
               </div>
             </details>
           ))}
@@ -691,6 +708,33 @@ export default function OnlineTutorQuizApp() {
         };
       })
       .slice(0, 30);
+  }, [logs, questions]);
+
+  const wrongQuestionSummary = useMemo(() => {
+    const summaryMap = {};
+
+    logs.forEach((log) => {
+      const isCorrect = log.is_correct || log.isCorrect;
+      if (isCorrect) return;
+
+      const questionId = log.question_id || log.questionId;
+      if (!questionId) return;
+
+      if (!summaryMap[questionId]) {
+        const question = questions.find((item) => item.id === questionId);
+        summaryMap[questionId] = {
+          questionId,
+          wrongCount: 0,
+          questionText: question ? question.questionText : "",
+          choices: question ? question.choices : [],
+          correctAnswer: question ? question.correctAnswer : (log.correct_answer || log.correctAnswer || ""),
+        };
+      }
+
+      summaryMap[questionId].wrongCount += 1;
+    });
+
+    return Object.values(summaryMap).sort((a, b) => b.wrongCount - a.wrongCount || a.questionId.localeCompare(b.questionId));
   }, [logs, questions]);
 
   const startQuiz = () => {
@@ -848,9 +892,9 @@ export default function OnlineTutorQuizApp() {
 
 setImportMessage(`${newQuestions.length}問をSupabaseに保存しました（無効: ${invalidMessages.length}問）`);
         if (invalidMessages.length > 0) {
-setImportError(
-  `取り込めなかった行があります。\n${invalidMessages.join("\n")}`
-);
+          setImportError(`取り込めなかった行があります。
+${invalidMessages.join("
+")}`);
         }
         fetchQuestions();
       } catch (error) {
@@ -862,11 +906,11 @@ setImportError(
 
   const deleteQuestion = async (questionId) => {
     const target = questions.find((question) => question.id === questionId);
-const ok = window.confirm(
-  `問題 ${questionId} を削除します。${
-    target ? "\n\n" + target.questionText : ""
-  }\n\n解答ログは削除されません。よろしいですか？`
-);
+    const ok = window.confirm(`問題 ${questionId} を削除します。${target ? "
+
+" + target.questionText : ""}
+
+解答ログは削除されません。よろしいですか？`);
     if (!ok) return;
 
     const { error } = await supabase.from("questions").delete().eq("id", questionId);
@@ -982,6 +1026,7 @@ const ok = window.confirm(
             wrongAnswers={wrongAnswers}
             clearWrongAnswers={() => setWrongAnswers([])}
             reviewWrongLogs={reviewWrongLogs}
+            wrongQuestionSummary={wrongQuestionSummary}
           />
         ) : (
           <div>
@@ -999,6 +1044,7 @@ const ok = window.confirm(
                 ["add", "手入力"],
                 ["list", "問題一覧"],
                 ["logs", "ログ"],
+                ["wrong", "間違えた問題"],
                 ["updates", "更新履歴"],
                 ["tests", "テスト"],
               ].map(([key, label]) => (
@@ -1140,6 +1186,29 @@ const ok = window.confirm(
                     )}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {teacherTab === "wrong" && (
+              <div style={styles.card}>
+                <h2>間違えた問題</h2>
+                <p style={{ color: "#6b7280", fontSize: 13 }}>これまでの解答ログから、不正解だった問題を回数順に表示します。</p>
+                {wrongQuestionSummary.length === 0 ? (
+                  <div>不正解ログがありません。</div>
+                ) : (
+                  wrongQuestionSummary.map((item) => (
+                    <details key={item.questionId} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+                      <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
+                        {item.questionId}：不正解 {item.wrongCount}回
+                      </summary>
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ marginBottom: 8 }}>{item.questionText || "問題文を取得できませんでした"}</div>
+                        <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.length ? item.choices.join(" / ") : "取得できませんでした"}</div>
+                        <div style={{ fontWeight: 700, marginTop: 4 }}>正解：{item.correctAnswer || "取得できませんでした"}</div>
+                      </div>
+                    </details>
+                  ))
+                )}
               </div>
             )}
 
