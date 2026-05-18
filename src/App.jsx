@@ -892,9 +892,9 @@ export default function OnlineTutorQuizApp() {
 
 setImportMessage(`${newQuestions.length}問をSupabaseに保存しました（無効: ${invalidMessages.length}問）`);
         if (invalidMessages.length > 0) {
-          setImportError(`取り込めなかった行があります。
-${invalidMessages.join("
-")}`);
+         setImportError(
+  `取り込めなかった行があります。\n${invalidMessages.join("\n")}`
+);
         }
         fetchQuestions();
       } catch (error) {
@@ -906,11 +906,11 @@ ${invalidMessages.join("
 
   const deleteQuestion = async (questionId) => {
     const target = questions.find((question) => question.id === questionId);
-    const ok = window.confirm(`問題 ${questionId} を削除します。${target ? "
-
-" + target.questionText : ""}
-
-解答ログは削除されません。よろしいですか？`);
+const ok = window.confirm(
+  `問題 ${questionId} を削除します。${
+    target ? "\n\n" + target.questionText : ""
+  }\n\n解答ログは削除されません。よろしいですか？`
+);
     if (!ok) return;
 
     const { error } = await supabase.from("questions").delete().eq("id", questionId);
