@@ -2,8 +2,33 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://gqdxveunrlkjpryabexd.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZHh2ZXVucmxranByeWFiZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MDcxMTIsImV4cCI6MjA5MzI4MzExMn0.AudkiJsUAc6naoMeNJI0Qu4p8z8UXxRMf4YgR0gc3SQ";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZHh2ZXVucmxranByeWFiZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MDcxMTIsImV4cCI6MjA5MzExMn0.AudkiJsUAc6naoMeNJI0Qu4p8z8UXxRMf4YgR0gc3SQ";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const APP_VERSION = "1.3.0";
+const CHANGELOG = [
+  {
+    version: "1.3.0",
+    date: "2026-05-18",
+    items: [
+      "アプリ内にバージョン表記を追加",
+      "先生画面にアップデート履歴を追加",
+      "解答ログの時刻表示を日本時間に補正",
+      "生徒画面で、その回に間違えた問題を確認できる機能を追加",
+      "先生画面から特定の解答ログを個別削除できる機能を追加",
+    ],
+  },
+  {
+    version: "1.2.0",
+    date: "2026-05-18",
+    items: [
+      "CSV取り込み失敗時の理由表示を追加",
+      "先生画面から問題を手動削除できる機能を追加",
+      "不正解問題リストと不正解回数の表示を追加",
+      "ログリセット機能を追加",
+    ],
+  },
+];
 
 const emptyQuestion = {
   id: "",
@@ -265,15 +290,24 @@ function parseCsvText(text) {
   });
 }
 
+function normalizeSupabaseTimestamp(value) {
+  if (!value) return "";
+  const text = String(value);
+  if (/[zZ]$/.test(text) || /[+-]\d{2}:?\d{2}$/.test(text)) return text;
+  return `${text}Z`;
+}
+
 function formatDateTime(iso) {
   if (!iso) return "-";
+  const date = new Date(normalizeSupabaseTimestamp(iso));
   return new Intl.DateTimeFormat("ja-JP", {
     timeZone: "Asia/Tokyo",
+    year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(iso));
+  }).format(date);
 }
 
 function escapeCsvCell(value) {
@@ -283,7 +317,7 @@ function escapeCsvCell(value) {
 function buildCsv(logs) {
   const header = ["日時", "問題番号", "単元", "選んだ選択肢", "正解", "正誤"];
   const rows = logs.map((log) => [
-    new Date(log.answered_at || log.answeredAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }),
+    formatDateTime(log.answered_at || log.answeredAt),
     log.question_id || log.questionId,
     log.unit,
     log.selected_choice || log.selectedChoice,
@@ -294,9 +328,28 @@ function buildCsv(logs) {
 }
 
 function validateImportedRow(row) {
+  return validateImportedRowDetailed(row).valid;
+}
+
+function validateImportedRowDetailed(row, rowNumber = "?") {
+  const id = String(row.id || "").trim();
+  const question = String(row.question || "").trim();
   const choices = [row.choice1, row.choice2, row.choice3, row.choice4].map((choice) => String(choice || "").trim());
   const answer = String(row.answer || "").trim();
-  return Boolean(String(row.question || "").trim() && choices.length === 4 && choices.every(Boolean) && choices.includes(answer));
+  const reasons = [];
+
+  if (!id) reasons.push("id（問題番号）が空です");
+  if (!question) reasons.push("question（問題文）が空です");
+  choices.forEach((choice, index) => {
+    if (!choice) reasons.push(`choice${index + 1} が空です`);
+  });
+  if (!answer) reasons.push("answer（正解）が空です");
+  if (answer && !choices.includes(answer)) reasons.push("answer が choice1〜choice4 のどれとも完全一致していません");
+
+  return {
+    valid: reasons.length === 0,
+    message: reasons.length ? `${rowNumber}行目${id ? `（${id}）` : ""}: ${reasons.join(" / ")}` : "",
+  };
 }
 
 function rowToQuestionInsert(row) {
@@ -372,6 +425,10 @@ function runSelfTests() {
       pass: validateImportedRow({ id: "PO001", question: "Q", choice1: "A", choice2: "B", choice3: "C", choice4: "D", answer: "E", unit: "時制" }) === false,
     },
     {
+      name: "validateImportedRowDetailed explains invalid answer",
+      pass: validateImportedRowDetailed({ id: "PO001", question: "Q", choice1: "A", choice2: "B", choice3: "C", choice4: "D", answer: "E", unit: "時制" }, 2).message.includes("完全一致"),
+    },
+    {
       name: "rowToQuestionInsert preserves question id",
       pass: rowToQuestionInsert({ id: "PO011", question: "Q", choice1: "A", choice2: "B", choice3: "C", choice4: "D", answer: "A", unit: "時制" }).id === "PO011",
     },
@@ -395,56 +452,88 @@ function runSelfTests() {
       name: "getMode defaults to student outside teacher query",
       pass: typeof window === "undefined" || ["student", "teacher"].includes(getMode()),
     },
+    {
+      name: "normalizeSupabaseTimestamp appends UTC marker when timezone is missing",
+      pass: normalizeSupabaseTimestamp("2026-05-18T00:00:00").endsWith("Z"),
+    },
+    {
+      name: "app version is defined",
+      pass: APP_VERSION === "1.3.0",
+    },
   ];
 }
 
-function StudentQuizView({ questions, currentQuestion, currentIndex, quizQueue, currentChoices, selectedChoice, answered, startQuiz, answerQuestion, nextQuestion, loading }) {
+function StudentQuizView({ questions, currentQuestion, currentIndex, quizQueue, currentChoices, selectedChoice, answered, startQuiz, answerQuestion, nextQuestion, loading, wrongAnswers, clearWrongAnswers }) {
   return (
-    <div style={styles.card}>
-      <div style={styles.header}>
-        <h2 style={{ margin: 0 }}>英語4択トレーニング</h2>
-        <button style={questions.length === 0 || loading ? styles.disabledButton : styles.primaryButton} onClick={startQuiz} disabled={questions.length === 0 || loading}>
-          出題開始
-        </button>
+    <div>
+      <div style={styles.card}>
+        <div style={styles.header}>
+          <h2 style={{ margin: 0 }}>英語4択トレーニング</h2>
+          <button style={questions.length === 0 || loading ? styles.disabledButton : styles.primaryButton} onClick={startQuiz} disabled={questions.length === 0 || loading}>
+            出題開始
+          </button>
+        </div>
+
+        {!currentQuestion ? (
+          <div style={{ padding: 24, textAlign: "center", color: "#6b7280", border: "1px dashed #d1d5db", borderRadius: 12 }}>
+            出題開始を押すと、ランダムに問題が出ます。
+          </div>
+        ) : (
+          <div>
+            <div style={{ marginBottom: 12 }}>
+              <span style={styles.badge}>{currentIndex + 1} / {quizQueue.length}</span>
+            </div>
+
+            <div style={{ ...styles.card, background: "#ffffff", fontSize: 18, lineHeight: 1.7 }}>
+              {currentQuestion.questionText}
+            </div>
+
+            <div style={styles.grid2}>
+              {currentChoices.map((choice) => {
+                const isSelected = selectedChoice === choice;
+                const isCorrect = choice === currentQuestion.correctAnswer;
+                const showCorrect = answered && isCorrect;
+                const showWrong = answered && isSelected && !isCorrect;
+                const buttonStyle = showCorrect ? styles.correctChoice : showWrong ? styles.wrongChoice : styles.choiceButton;
+                return (
+                  <button key={choice} type="button" style={buttonStyle} onClick={() => answerQuestion(choice)} disabled={answered}>
+                    {showCorrect ? "○ " : ""}{showWrong ? "× " : ""}{choice}
+                  </button>
+                );
+              })}
+            </div>
+
+            {answered && (
+              <div style={{ ...styles.card, marginTop: 16 }}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>{selectedChoice === currentQuestion.correctAnswer ? "正解" : "不正解"}</div>
+                <div>問題番号：{currentQuestion.id}</div>
+                <div>正解：{currentQuestion.correctAnswer}</div>
+                <button style={{ ...styles.primaryButton, marginTop: 12 }} onClick={nextQuestion}>次の問題へ</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {!currentQuestion ? (
-        <div style={{ padding: 24, textAlign: "center", color: "#6b7280", border: "1px dashed #d1d5db", borderRadius: 12 }}>
-          出題開始を押すと、ランダムに問題が出ます。
-        </div>
-      ) : (
-        <div>
-          <div style={{ marginBottom: 12 }}>
-            <span style={styles.badge}>{currentIndex + 1} / {quizQueue.length}</span>
+      {wrongAnswers.length > 0 && (
+        <div style={styles.card}>
+          <div style={styles.header}>
+            <h2 style={{ margin: 0 }}>今回間違えた問題</h2>
+            <button style={styles.button} onClick={clearWrongAnswers}>このリストをクリア</button>
           </div>
-
-          <div style={{ ...styles.card, background: "#ffffff", fontSize: 18, lineHeight: 1.7 }}>
-            {currentQuestion.questionText}
-          </div>
-
-          <div style={styles.grid2}>
-            {currentChoices.map((choice) => {
-              const isSelected = selectedChoice === choice;
-              const isCorrect = choice === currentQuestion.correctAnswer;
-              const showCorrect = answered && isCorrect;
-              const showWrong = answered && isSelected && !isCorrect;
-              const buttonStyle = showCorrect ? styles.correctChoice : showWrong ? styles.wrongChoice : styles.choiceButton;
-              return (
-                <button key={choice} type="button" style={buttonStyle} onClick={() => answerQuestion(choice)} disabled={answered}>
-                  {showCorrect ? "○ " : ""}{showWrong ? "× " : ""}{choice}
-                </button>
-              );
-            })}
-          </div>
-
-          {answered && (
-            <div style={{ ...styles.card, marginTop: 16 }}>
-              <div style={{ fontWeight: 700, marginBottom: 8 }}>{selectedChoice === currentQuestion.correctAnswer ? "正解" : "不正解"}</div>
-              <div>問題番号：{currentQuestion.id}</div>
-              <div>正解：{currentQuestion.correctAnswer}</div>
-              <button style={{ ...styles.primaryButton, marginTop: 12 }} onClick={nextQuestion}>次の問題へ</button>
-            </div>
-          )}
+          {wrongAnswers.map((item, index) => (
+            <details key={`${item.questionId}-${index}`} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+              <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
+                {item.questionId}：選んだ答え「{item.selectedChoice}」
+              </summary>
+              <div style={{ marginTop: 8 }}>
+                <div style={{ marginBottom: 8 }}>{item.questionText}</div>
+                <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.join(" / ")}</div>
+                <div style={{ marginTop: 4 }}>選んだ答え：{item.selectedChoice}</div>
+                <div style={{ fontWeight: 700 }}>正解：{item.correctAnswer}</div>
+              </div>
+            </details>
+          ))}
         </div>
       )}
     </div>
@@ -471,6 +560,7 @@ export default function OnlineTutorQuizApp() {
   const [loading, setLoading] = useState(false);
   const [dbError, setDbError] = useState("");
   const [teacherTab, setTeacherTab] = useState("quiz");
+  const [wrongAnswers, setWrongAnswers] = useState([]);
 
   const fetchQuestions = async () => {
     setLoading(true);
@@ -583,6 +673,19 @@ export default function OnlineTutorQuizApp() {
     setSelectedChoice(choice);
     setAnswered(true);
 
+    if (!isCorrect) {
+      setWrongAnswers((prev) => [
+        {
+          questionId: currentQuestion.id,
+          questionText: currentQuestion.questionText,
+          choices: currentQuestion.choices,
+          selectedChoice: choice,
+          correctAnswer: currentQuestion.correctAnswer,
+        },
+        ...prev,
+      ]);
+    }
+
     const logRow = {
       question_id: currentQuestion.id,
       selected_choice: choice,
@@ -667,13 +770,14 @@ export default function OnlineTutorQuizApp() {
           return;
         }
 
-        let invalidCount = 0;
+        const invalidMessages = [];
         const newQuestions = [];
-        rows.forEach((row) => {
-          if (validateImportedRow(row)) {
+        rows.forEach((row, index) => {
+          const result = validateImportedRowDetailed(row, index + 2);
+          if (result.valid) {
             newQuestions.push(rowToQuestionInsert(row));
           } else {
-            invalidCount += 1;
+            invalidMessages.push(result.message);
           }
         });
 
@@ -688,7 +792,12 @@ export default function OnlineTutorQuizApp() {
           return;
         }
 
-        setImportMessage(`${newQuestions.length}問をSupabaseに保存しました（無効: ${invalidCount}問）`);
+setImportMessage(`${newQuestions.length}問をSupabaseに保存しました（無効: ${invalidMessages.length}問）`);
+        if (invalidMessages.length > 0) {
+          setImportError(`取り込めなかった行があります。
+${invalidMessages.join("
+")}`);
+        }
         fetchQuestions();
       } catch (error) {
         setImportError("CSVの読み込みに失敗しました。");
@@ -697,8 +806,23 @@ export default function OnlineTutorQuizApp() {
     reader.readAsText(file, "utf-8");
   };
 
-  const deleteQuestion = async () => {
-    setDbError("現在は安全のため、画面からの削除は無効にしています。Supabase側で削除するか、削除権限を追加してください。");
+  const deleteQuestion = async (questionId) => {
+    const target = questions.find((question) => question.id === questionId);
+    const ok = window.confirm(`問題 ${questionId} を削除します。${target ? "
+
+" + target.questionText : ""}
+
+解答ログは削除されません。よろしいですか？`);
+    if (!ok) return;
+
+    const { error } = await supabase.from("questions").delete().eq("id", questionId);
+    if (error) {
+      setDbError("問題の削除に失敗しました: " + error.message);
+      return;
+    }
+
+    setQuestions((prev) => prev.filter((question) => question.id !== questionId));
+    setDbError("");
   };
 
   const exportLogs = () => {
@@ -726,6 +850,20 @@ export default function OnlineTutorQuizApp() {
     setDbError("");
   };
 
+  const deleteAnswerLog = async (logId) => {
+    const ok = window.confirm("この解答ログを削除します。よろしいですか？");
+    if (!ok) return;
+
+    const { error } = await supabase.from("answer_logs").delete().eq("id", logId);
+    if (error) {
+      setDbError("解答ログの削除に失敗しました: " + error.message);
+      return;
+    }
+
+    setLogs((prev) => prev.filter((log) => log.id !== logId));
+    setDbError("");
+  };
+
   const refreshAll = () => {
     fetchQuestions();
     if (isTeacher) fetchLogs();
@@ -738,6 +876,7 @@ export default function OnlineTutorQuizApp() {
           <div>
             <h1 style={{ marginBottom: 4 }}>オンライン家庭教師・4択練習アプリ</h1>
             <p style={{ color: "#6b7280", marginTop: 0 }}>{isTeacher ? "先生用：問題管理とログ確認" : "生徒用：英語の穴埋め4択トレーニング"}</p>
+            <p style={{ color: "#6b7280", marginTop: 4, fontSize: 13 }}>ver {APP_VERSION}</p>
           </div>
           <div style={styles.row}>
             <button style={styles.button} onClick={refreshAll}>再読み込み</button>
@@ -786,6 +925,8 @@ export default function OnlineTutorQuizApp() {
             answerQuestion={answerQuestion}
             nextQuestion={nextQuestion}
             loading={loading}
+            wrongAnswers={wrongAnswers}
+            clearWrongAnswers={() => setWrongAnswers([])}
           />
         ) : (
           <div>
@@ -803,6 +944,7 @@ export default function OnlineTutorQuizApp() {
                 ["add", "手入力"],
                 ["list", "問題一覧"],
                 ["logs", "ログ"],
+                ["updates", "更新履歴"],
                 ["tests", "テスト"],
               ].map(([key, label]) => (
                 <button key={key} style={teacherTab === key ? styles.primaryButton : styles.button} onClick={() => setTeacherTab(key)}>
@@ -832,7 +974,7 @@ export default function OnlineTutorQuizApp() {
                 <h2>CSV取り込み</h2>
                 <input type="file" accept=".csv" onChange={(e) => handleCsvImport(e.target.files ? e.target.files[0] : null)} />
                 {importMessage && <div style={styles.success}>{importMessage}</div>}
-                {importError && <div style={styles.error}>{importError}</div>}
+                {importError && <div style={{ ...styles.error, whiteSpace: "pre-wrap" }}>{importError}</div>}
                 <p style={{ fontSize: 13, color: "#6b7280" }}>列名は id, question, choice1, choice2, choice3, choice4, answer, unit にしてください。</p>
               </div>
             )}
@@ -881,7 +1023,7 @@ export default function OnlineTutorQuizApp() {
                     <p>{question.questionText}</p>
                     <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{question.choices.join(" / ")}</div>
                     <div style={{ fontWeight: 700 }}>正解：{question.correctAnswer}</div>
-                    <button style={{ ...styles.button, marginTop: 8 }} onClick={() => deleteQuestion()}>削除（現在無効）</button>
+                    <button style={{ ...styles.dangerButton, marginTop: 8 }} onClick={() => deleteQuestion(question.id)}>この問題を削除</button>
                   </div>
                 ))}
               </div>
@@ -908,6 +1050,7 @@ export default function OnlineTutorQuizApp() {
                           <span style={styles.badge}>{log.question_id}</span>
                           <span style={styles.badge}>{log.unit}</span>
                           <span style={{ fontSize: 12, color: "#6b7280" }}>{formatDateTime(log.answered_at)}</span>
+                          <button style={styles.button} onClick={() => deleteAnswerLog(log.id)}>このログを削除</button>
                         </div>
                         <div>選んだ選択肢：{log.selected_choice}</div>
                         <div>正解：{log.correct_answer}</div>
@@ -942,6 +1085,23 @@ export default function OnlineTutorQuizApp() {
                     )}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {teacherTab === "updates" && (
+              <div style={styles.card}>
+                <h2>更新履歴</h2>
+                {CHANGELOG.map((entry) => (
+                  <div key={entry.version} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+                    <div style={{ fontWeight: 700 }}>ver {entry.version}</div>
+                    <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 8 }}>{entry.date}</div>
+                    <ul style={{ marginTop: 0 }}>
+                      {entry.items.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </div>
             )}
 
