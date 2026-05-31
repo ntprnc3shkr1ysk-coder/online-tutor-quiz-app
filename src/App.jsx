@@ -485,8 +485,8 @@ function runSelfTests() {
 function StudentQuizView({
   questions = [],
   units = [],
-  selectedUnit,
-  setSelectedUnit,
+  selectedUnit = "all",
+  setSelectedUnit = () => {},
   currentQuestion,
   currentIndex,
   quizQueue = [],
@@ -494,6 +494,7 @@ function StudentQuizView({
   selectedChoice,
   answered,
   startQuiz,
+  stopQuiz = () => {},
   answerQuestion,
   nextQuestion,
   loading,
@@ -502,14 +503,44 @@ function StudentQuizView({
   reviewWrongLogs = [],
   wrongQuestionSummary = [],
 }) {
+  const [showRecentWrongLogs, setShowRecentWrongLogs] = useState(false);
+  const [recentWrongPage, setRecentWrongPage] = useState(0);
+  const [showWrongByUnit, setShowWrongByUnit] = useState(false);
+  const [wrongReviewUnit, setWrongReviewUnit] = useState("all");
+
+  const recentWrongPageSize = 10;
+  const recentWrongPageCount = Math.max(1, Math.ceil(reviewWrongLogs.length / recentWrongPageSize));
+  const recentWrongPageItems = reviewWrongLogs.slice(
+    recentWrongPage * recentWrongPageSize,
+    recentWrongPage * recentWrongPageSize + recentWrongPageSize
+  );
+
+  const wrongSummaryUnits = useMemo(() => {
+    return Array.from(new Set(wrongQuestionSummary.map((item) => item.unit || "未分類"))).sort();
+  }, [wrongQuestionSummary]);
+
+  const filteredWrongQuestionSummary = useMemo(() => {
+    if (wrongReviewUnit === "all") return wrongQuestionSummary;
+    return wrongQuestionSummary.filter((item) => (item.unit || "未分類") === wrongReviewUnit);
+  }, [wrongQuestionSummary, wrongReviewUnit]);
+
+  const hasActiveQuiz = Boolean(currentQuestion);
+
   return (
     <div>
       <div style={styles.card}>
         <div style={styles.header}>
           <h2 style={{ margin: 0 }}>英語4択トレーニング</h2>
-          <button style={questions.length === 0 || loading ? styles.disabledButton : styles.primaryButton} onClick={startQuiz} disabled={questions.length === 0 || loading}>
-            出題開始
-          </button>
+          <div style={styles.row}>
+            {hasActiveQuiz && (
+              <button style={styles.button} onClick={stopQuiz}>
+                途中でやめる
+              </button>
+            )}
+            <button style={questions.length === 0 || loading ? styles.disabledButton : styles.primaryButton} onClick={startQuiz} disabled={questions.length === 0 || loading}>
+              出題開始
+            </button>
+          </div>
         </div>
 
         <div style={{ marginBottom: 16 }}>
@@ -572,7 +603,7 @@ function StudentQuizView({
             <h2 style={{ margin: 0 }}>今回間違えた問題</h2>
             <button style={styles.button} onClick={clearWrongAnswers}>このリストをクリア</button>
           </div>
-          {wrongAnswers.map((item, index) => (
+          {wrongAnswers.slice(0, 5).map((item, index) => (
             <details key={`${item.questionId}-${index}`} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
               <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
                 {item.questionId}：選んだ答え「{item.selectedChoice}」
@@ -585,47 +616,124 @@ function StudentQuizView({
               </div>
             </details>
           ))}
+          {wrongAnswers.length > 5 && (
+            <p style={{ color: "#6b7280", fontSize: 13, marginBottom: 0 }}>
+              直近5件だけ表示しています。過去分は下の「間違えた問題」から確認できます。
+            </p>
+          )}
         </div>
       )}
 
-      {wrongQuestionSummary.length > 0 && (
-        <div style={styles.card}>
-          <h2 style={{ marginTop: 0 }}>間違えた問題</h2>
-          <p style={{ color: "#6b7280", fontSize: 13 }}>これまでに不正解だった問題を、問題ごとの回数でまとめています。</p>
-          {wrongQuestionSummary.map((item) => (
-            <details key={item.questionId} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
-              <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
-                {item.questionId}：不正解 {item.wrongCount}回
-              </summary>
-              <div style={{ marginTop: 8 }}>
-                <div style={{ marginBottom: 8 }}>{item.questionText || "問題文を取得できませんでした"}</div>
-                <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.length ? item.choices.join(" / ") : "取得できませんでした"}</div>
-                <div style={{ fontWeight: 700, marginTop: 4 }}>正解：{item.correctAnswer || "取得できませんでした"}</div>
-              </div>
-            </details>
-          ))}
+      <div style={styles.card}>
+        <div style={styles.header}>
+          <div>
+            <h2 style={{ margin: 0 }}>間違えた問題</h2>
+            <p style={{ color: "#6b7280", fontSize: 13, margin: "6px 0 0" }}>
+              最近間違えた問題を10問ずつ確認できます。
+            </p>
+          </div>
+          <button
+            style={styles.button}
+            onClick={() => {
+              setShowRecentWrongLogs((prev) => !prev);
+              setRecentWrongPage(0);
+            }}
+          >
+            {showRecentWrongLogs ? "閉じる" : "最近のミスを見る"}
+          </button>
         </div>
-      )}
 
-      {reviewWrongLogs.length > 0 && (
-        <div style={styles.card}>
-          <h2 style={{ marginTop: 0 }}>これまで間違えた問題</h2>
-          <p style={{ color: "#6b7280", fontSize: 13 }}>過去の解答ログから、不正解だった問題を表示しています。</p>
-          {reviewWrongLogs.map((item) => (
-            <details key={item.logId} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
-              <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
-                {item.questionId}：{formatDateTime(item.answeredAt)} に不正解
-              </summary>
-              <div style={{ marginTop: 8 }}>
-                <div style={{ marginBottom: 8 }}>{item.questionText || "問題文を取得できませんでした"}</div>
-                <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.length ? item.choices.join(" / ") : "取得できませんでした"}</div>
-                <div style={{ marginTop: 4 }}>選んだ答え：{item.selectedChoice}</div>
-                <div style={{ fontWeight: 700 }}>正解：{item.correctAnswer}</div>
+        {showRecentWrongLogs && (
+          <div>
+            {reviewWrongLogs.length === 0 ? (
+              <div style={{ color: "#6b7280" }}>不正解ログがありません。</div>
+            ) : (
+              <div>
+                {recentWrongPageItems.map((item) => (
+                  <details key={item.logId} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+                    <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
+                      {item.questionId}：{formatDateTime(item.answeredAt)} に不正解
+                    </summary>
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ marginBottom: 8 }}>{item.questionText || "問題文を取得できませんでした"}</div>
+                      <div style={{ fontSize: 13, color: "#6b7280" }}>単元：{item.unit || "未分類"}</div>
+                      <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.length ? item.choices.join(" / ") : "取得できませんでした"}</div>
+                      <div style={{ marginTop: 4 }}>選んだ答え：{item.selectedChoice}</div>
+                      <div style={{ fontWeight: 700 }}>正解：{item.correctAnswer}</div>
+                    </div>
+                  </details>
+                ))}
+
+                <div style={{ ...styles.row, justifyContent: "space-between", marginTop: 12 }}>
+                  <button
+                    style={recentWrongPage === 0 ? styles.disabledButton : styles.button}
+                    onClick={() => setRecentWrongPage((prev) => Math.max(0, prev - 1))}
+                    disabled={recentWrongPage === 0}
+                  >
+                    前の10問
+                  </button>
+                  <span style={{ color: "#6b7280", fontSize: 13 }}>
+                    {recentWrongPage + 1} / {recentWrongPageCount}ページ
+                  </span>
+                  <button
+                    style={recentWrongPage >= recentWrongPageCount - 1 ? styles.disabledButton : styles.button}
+                    onClick={() => setRecentWrongPage((prev) => Math.min(recentWrongPageCount - 1, prev + 1))}
+                    disabled={recentWrongPage >= recentWrongPageCount - 1}
+                  >
+                    次の10問
+                  </button>
+                </div>
               </div>
-            </details>
-          ))}
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={styles.card}>
+        <div style={styles.header}>
+          <div>
+            <h2 style={{ margin: 0 }}>これまで間違えた問題</h2>
+            <p style={{ color: "#6b7280", fontSize: 13, margin: "6px 0 0" }}>
+              単元を選んで、これまで間違えた問題を問題ごとに確認できます。
+            </p>
+          </div>
+          <button style={styles.button} onClick={() => setShowWrongByUnit((prev) => !prev)}>
+            {showWrongByUnit ? "閉じる" : "単元別に見る"}
+          </button>
         </div>
-      )}
+
+        {showWrongByUnit && (
+          <div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={styles.label}>確認する単元</label>
+              <select style={styles.input} value={wrongReviewUnit} onChange={(e) => setWrongReviewUnit(e.target.value)}>
+                <option value="all">すべての単元</option>
+                {wrongSummaryUnits.map((unit) => (
+                  <option key={unit} value={unit}>{unit}</option>
+                ))}
+              </select>
+            </div>
+
+            {filteredWrongQuestionSummary.length === 0 ? (
+              <div style={{ color: "#6b7280" }}>この単元の不正解ログはありません。</div>
+            ) : (
+              filteredWrongQuestionSummary.map((item) => (
+                <details key={item.questionId} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
+                    {item.questionId}：不正解 {item.wrongCount}回
+                  </summary>
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ marginBottom: 8 }}>{item.questionText || "問題文を取得できませんでした"}</div>
+                    <div style={{ fontSize: 13, color: "#6b7280" }}>単元：{item.unit || "未分類"}</div>
+                    <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.length ? item.choices.join(" / ") : "取得できませんでした"}</div>
+                    <div style={{ fontWeight: 700, marginTop: 4 }}>正解：{item.correctAnswer || "取得できませんでした"}</div>
+                  </div>
+                </details>
+              ))
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -751,6 +859,7 @@ export default function OnlineTutorQuizApp() {
           answeredAt: log.answered_at || log.answeredAt,
           selectedChoice: log.selected_choice || log.selectedChoice,
           correctAnswer: log.correct_answer || log.correctAnswer,
+          unit: log.unit || (question ? question.unit : "未分類"),
           questionText: question ? question.questionText : "",
           choices: question ? question.choices : [],
         };
@@ -773,6 +882,7 @@ export default function OnlineTutorQuizApp() {
         summaryMap[questionId] = {
           questionId,
           wrongCount: 0,
+          unit: log.unit || (question ? question.unit : "未分類"),
           questionText: question ? question.questionText : "",
           choices: question ? question.choices : [],
           correctAnswer: question ? question.correctAnswer : (log.correct_answer || log.correctAnswer || ""),
@@ -792,6 +902,15 @@ export default function OnlineTutorQuizApp() {
     setSelectedChoice("");
     setAnswered(false);
     setCurrentChoices(queue[0] ? shuffleArray(queue[0].choices) : []);
+  };
+
+  const stopQuiz = () => {
+    setQuizQueue([]);
+    setCurrentIndex(0);
+    setCurrentChoices([]);
+    setSelectedChoice("");
+    setAnswered(false);
+    if (isTeacher) fetchLogs();
   };
 
   const nextQuestion = () => {
@@ -1074,6 +1193,7 @@ const confirmMessage =
             selectedChoice={selectedChoice}
             answered={answered}
             startQuiz={startQuiz}
+            stopQuiz={stopQuiz}
             answerQuestion={answerQuestion}
             nextQuestion={nextQuestion}
             loading={loading}
@@ -1110,7 +1230,10 @@ const confirmMessage =
 
             {teacherTab === "quiz" && (
               <StudentQuizView
-                questions={questions}
+                questions={filteredQuestions}
+                units={units}
+                selectedUnit={selectedUnit}
+                setSelectedUnit={setSelectedUnit}
                 currentQuestion={currentQuestion}
                 currentIndex={currentIndex}
                 quizQueue={quizQueue}
@@ -1118,6 +1241,7 @@ const confirmMessage =
                 selectedChoice={selectedChoice}
                 answered={answered}
                 startQuiz={startQuiz}
+                stopQuiz={stopQuiz}
                 answerQuestion={answerQuestion}
                 nextQuestion={nextQuestion}
                 loading={loading}
