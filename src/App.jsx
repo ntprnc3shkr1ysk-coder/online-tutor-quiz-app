@@ -5,10 +5,20 @@ const SUPABASE_URL = "https://gqdxveunrlkjpryabexd.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZHh2ZXVucmxranByeWFiZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MDcxMTIsImV4cCI6MjA5MzI4MzExMn0.AudkiJsUAc6naoMeNJI0Qu4p8z8UXxRMf4YgR0gc3SQ";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.7.0";
 const MAX_LOGS = 10000;
 const LOG_PAGE_SIZE = 1000;
 const CHANGELOG = [
+  {
+    version: "1.7.0",
+    date: "2026-07-10",
+    items: [
+      "全期間と期間指定をタブで切り替えて成績を確認できる機能を追加",
+      "生徒画面にも登録問題数・解答数・正解数・正答率を追加",
+      "期間指定では開始日と終了日を選んで、その間だけの成績を集計",
+      "これまで回答した問題を、回答回数1回以上・正答率が低い順で表示するよう修正",
+    ],
+  },
   {
     version: "1.6.0",
     date: "2026-07-10",
@@ -492,9 +502,89 @@ function runSelfTests() {
     },
     {
       name: "app version is defined",
-      pass: APP_VERSION === "1.6.0",
+      pass: APP_VERSION === "1.7.0",
     },
   ];
+}
+
+
+function calculateStats(logs) {
+  const total = logs.length;
+  const correct = logs.filter((log) => log.is_correct || log.isCorrect).length;
+  const rate = total ? Math.round((correct / total) * 100) : 0;
+  return { total, correct, rate };
+}
+
+function StatsPanel({ questionsCount = 0, logs = [] }) {
+  const [statsTab, setStatsTab] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  const periodLogs = useMemo(() => {
+    if (statsTab === "all") return logs;
+
+    return logs.filter((log) => {
+      const raw = log.answered_at || log.answeredAt;
+      if (!raw) return false;
+      const answeredAt = new Date(normalizeSupabaseTimestamp(raw));
+      if (Number.isNaN(answeredAt.getTime())) return false;
+
+      if (startDate) {
+        const start = new Date(`${startDate}T00:00:00+09:00`);
+        if (answeredAt < start) return false;
+      }
+      if (endDate) {
+        const end = new Date(`${endDate}T23:59:59.999+09:00`);
+        if (answeredAt > end) return false;
+      }
+      return true;
+    });
+  }, [logs, statsTab, startDate, endDate]);
+
+  const displayedStats = useMemo(() => calculateStats(periodLogs), [periodLogs]);
+
+  return (
+    <div style={styles.card}>
+      <div style={styles.header}>
+        <div>
+          <h2 style={{ margin: 0 }}>成績</h2>
+          <p style={{ color: "#6b7280", fontSize: 13, margin: "6px 0 0" }}>
+            全期間または指定した期間だけの成績を確認できます。
+          </p>
+        </div>
+        <div style={styles.row}>
+          <button style={statsTab === "all" ? styles.primaryButton : styles.button} onClick={() => setStatsTab("all")}>全期間</button>
+          <button style={statsTab === "period" ? styles.primaryButton : styles.button} onClick={() => setStatsTab("period")}>期間指定</button>
+        </div>
+      </div>
+
+      {statsTab === "period" && (
+        <div style={{ ...styles.grid2, marginBottom: 16 }}>
+          <div>
+            <label style={styles.label}>開始日</label>
+            <input type="date" style={styles.input} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </div>
+          <div>
+            <label style={styles.label}>終了日</label>
+            <input type="date" style={styles.input} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      <div style={{ ...styles.statsGrid, marginBottom: 0 }}>
+        <div style={{ ...styles.card, marginBottom: 0 }}><div>登録問題数</div><strong style={{ fontSize: 24 }}>{questionsCount}問</strong></div>
+        <div style={{ ...styles.card, marginBottom: 0 }}><div>解答数</div><strong style={{ fontSize: 24 }}>{displayedStats.total}回</strong></div>
+        <div style={{ ...styles.card, marginBottom: 0 }}><div>正解数</div><strong style={{ fontSize: 24 }}>{displayedStats.correct}回</strong></div>
+        <div style={{ ...styles.card, marginBottom: 0 }}><div>正答率</div><strong style={{ fontSize: 24 }}>{displayedStats.rate}%</strong></div>
+      </div>
+
+      {statsTab === "period" && !startDate && !endDate && (
+        <p style={{ color: "#6b7280", fontSize: 13, marginBottom: 0 }}>
+          日付を指定していない間は、全期間の成績を表示します。
+        </p>
+      )}
+    </div>
+  );
 }
 
 function StudentQuizView({
@@ -682,7 +772,7 @@ function StudentQuizView({
               {wrongSummaryUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
             </select>
             {filteredWrongQuestionSummary.length === 0 ? (
-              <div style={{ marginTop: 12 }}>この単元の不正解ログはありません。</div>
+              <div style={{ marginTop: 12 }}>この単元には回答済みの問題がありません。</div>
             ) : filteredWrongQuestionSummary.map((item) => (
               <details key={item.questionId} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
                 <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
@@ -776,13 +866,6 @@ export default function OnlineTutorQuizApp() {
   const currentQuestion = quizQueue[currentIndex];
   const testResults = useMemo(() => runSelfTests(), []);
 
-  const stats = useMemo(() => {
-    const total = logs.length;
-    const correct = logs.filter((log) => log.is_correct || log.isCorrect).length;
-    const rate = total ? Math.round((correct / total) * 100) : 0;
-    return { total, correct, rate };
-  }, [logs]);
-
   const weakUnits = useMemo(() => {
     const unitMap = {};
     logs.forEach((log) => {
@@ -870,7 +953,7 @@ export default function OnlineTutorQuizApp() {
     });
 
     return Object.values(summaryMap)
-      .filter((item) => item.wrongCount > 0)
+      .filter((item) => item.totalCount > 0)
       .map((item) => ({
         ...item,
         correctRate: item.totalCount ? Math.round((item.correctCount / item.totalCount) * 100) : 0,
@@ -1115,7 +1198,7 @@ const confirmMessage =
 
   const refreshAll = () => {
     fetchQuestions();
-    if (isTeacher) fetchLogs();
+    fetchLogs();
   };
 
   return (
@@ -1162,7 +1245,9 @@ const confirmMessage =
         )}
 
         {!isTeacher ? (
-          <StudentQuizView
+          <div>
+            <StatsPanel questionsCount={questions.length} logs={logs} />
+            <StudentQuizView
             questions={filteredQuestions}
             units={units}
             selectedUnit={selectedUnit}
@@ -1183,14 +1268,10 @@ const confirmMessage =
             reviewWrongLogs={reviewWrongLogs}
             wrongQuestionSummary={wrongQuestionSummary}
           />
+          </div>
         ) : (
           <div>
-            <div style={styles.statsGrid}>
-              <div style={styles.card}><div>登録問題数</div><strong style={{ fontSize: 24 }}>{questions.length}問</strong></div>
-              <div style={styles.card}><div>解答数</div><strong style={{ fontSize: 24 }}>{stats.total}回</strong></div>
-              <div style={styles.card}><div>正解数</div><strong style={{ fontSize: 24 }}>{stats.correct}回</strong></div>
-              <div style={styles.card}><div>正答率</div><strong style={{ fontSize: 24 }}>{stats.rate}%</strong></div>
-            </div>
+            <StatsPanel questionsCount={questions.length} logs={logs} />
 
             <div style={{ ...styles.row, marginBottom: 16 }}>
               {[
