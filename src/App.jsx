@@ -5,8 +5,23 @@ const SUPABASE_URL = "https://gqdxveunrlkjpryabexd.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZHh2ZXVucmxranByeWFiZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MDcxMTIsImV4cCI6MjA5MzI4MzExMn0.AudkiJsUAc6naoMeNJI0Qu4p8z8UXxRMf4YgR0gc3SQ";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.6.0";
+const MAX_LOGS = 10000;
+const LOG_PAGE_SIZE = 1000;
 const CHANGELOG = [
+  {
+    version: "1.6.0",
+    date: "2026-07-10",
+    items: [
+      "クイズを途中で終了できる機能を追加（回答済みログは保持）",
+      "生徒画面の間違い履歴をボタン展開式・10件ずつのページ送りに変更",
+      "これまで間違えた問題を単元別に確認できるように変更",
+      "先生画面で生徒の間違えた問題を確認できるようログ取得処理を修正",
+      "解答ログの取得上限を200件から最大10000件に拡張",
+      "問題ごとの表示を不正解回数から正答率に変更",
+      "先生画面の出題確認で単元選択が正しく動作するよう修正",
+    ],
+  },
   {
     version: "1.5.0",
     date: "2026-05-18",
@@ -477,7 +492,7 @@ function runSelfTests() {
     },
     {
       name: "app version is defined",
-      pass: APP_VERSION === "1.5.0",
+      pass: APP_VERSION === "1.6.0",
     },
   ];
 }
@@ -507,24 +522,19 @@ function StudentQuizView({
   const [recentWrongPage, setRecentWrongPage] = useState(0);
   const [showWrongByUnit, setShowWrongByUnit] = useState(false);
   const [wrongReviewUnit, setWrongReviewUnit] = useState("all");
-
   const recentWrongPageSize = 10;
   const recentWrongPageCount = Math.max(1, Math.ceil(reviewWrongLogs.length / recentWrongPageSize));
   const recentWrongPageItems = reviewWrongLogs.slice(
     recentWrongPage * recentWrongPageSize,
     recentWrongPage * recentWrongPageSize + recentWrongPageSize
   );
-
   const wrongSummaryUnits = useMemo(() => {
     return Array.from(new Set(wrongQuestionSummary.map((item) => item.unit || "未分類"))).sort();
   }, [wrongQuestionSummary]);
-
   const filteredWrongQuestionSummary = useMemo(() => {
     if (wrongReviewUnit === "all") return wrongQuestionSummary;
     return wrongQuestionSummary.filter((item) => (item.unit || "未分類") === wrongReviewUnit);
   }, [wrongQuestionSummary, wrongReviewUnit]);
-
-  const hasActiveQuiz = Boolean(currentQuestion);
 
   return (
     <div>
@@ -532,10 +542,8 @@ function StudentQuizView({
         <div style={styles.header}>
           <h2 style={{ margin: 0 }}>英語4択トレーニング</h2>
           <div style={styles.row}>
-            {hasActiveQuiz && (
-              <button style={styles.button} onClick={stopQuiz}>
-                途中でやめる
-              </button>
+            {currentQuestion && (
+              <button style={styles.button} onClick={stopQuiz}>途中でやめる</button>
             )}
             <button style={questions.length === 0 || loading ? styles.disabledButton : styles.primaryButton} onClick={startQuiz} disabled={questions.length === 0 || loading}>
               出題開始
@@ -603,7 +611,7 @@ function StudentQuizView({
             <h2 style={{ margin: 0 }}>今回間違えた問題</h2>
             <button style={styles.button} onClick={clearWrongAnswers}>このリストをクリア</button>
           </div>
-          {wrongAnswers.slice(0, 5).map((item, index) => (
+          {wrongAnswers.map((item, index) => (
             <details key={`${item.questionId}-${index}`} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
               <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
                 {item.questionId}：選んだ答え「{item.selectedChoice}」
@@ -616,11 +624,6 @@ function StudentQuizView({
               </div>
             </details>
           ))}
-          {wrongAnswers.length > 5 && (
-            <p style={{ color: "#6b7280", fontSize: 13, marginBottom: 0 }}>
-              直近5件だけ表示しています。過去分は下の「間違えた問題」から確認できます。
-            </p>
-          )}
         </div>
       )}
 
@@ -628,64 +631,36 @@ function StudentQuizView({
         <div style={styles.header}>
           <div>
             <h2 style={{ margin: 0 }}>間違えた問題</h2>
-            <p style={{ color: "#6b7280", fontSize: 13, margin: "6px 0 0" }}>
-              最近間違えた問題を10問ずつ確認できます。
-            </p>
+            <p style={{ color: "#6b7280", fontSize: 13, margin: "6px 0 0" }}>最近の不正解ログを10件ずつ確認できます。</p>
           </div>
-          <button
-            style={styles.button}
-            onClick={() => {
-              setShowRecentWrongLogs((prev) => !prev);
-              setRecentWrongPage(0);
-            }}
-          >
+          <button style={styles.button} onClick={() => { setShowRecentWrongLogs((prev) => !prev); setRecentWrongPage(0); }}>
             {showRecentWrongLogs ? "閉じる" : "最近のミスを見る"}
           </button>
         </div>
-
         {showRecentWrongLogs && (
-          <div>
-            {reviewWrongLogs.length === 0 ? (
-              <div style={{ color: "#6b7280" }}>不正解ログがありません。</div>
-            ) : (
-              <div>
-                {recentWrongPageItems.map((item) => (
-                  <details key={item.logId} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
-                    <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
-                      {item.questionId}：{formatDateTime(item.answeredAt)} に不正解
-                    </summary>
-                    <div style={{ marginTop: 8 }}>
-                      <div style={{ marginBottom: 8 }}>{item.questionText || "問題文を取得できませんでした"}</div>
-                      <div style={{ fontSize: 13, color: "#6b7280" }}>単元：{item.unit || "未分類"}</div>
-                      <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.length ? item.choices.join(" / ") : "取得できませんでした"}</div>
-                      <div style={{ marginTop: 4 }}>選んだ答え：{item.selectedChoice}</div>
-                      <div style={{ fontWeight: 700 }}>正解：{item.correctAnswer}</div>
-                    </div>
-                  </details>
-                ))}
-
-                <div style={{ ...styles.row, justifyContent: "space-between", marginTop: 12 }}>
-                  <button
-                    style={recentWrongPage === 0 ? styles.disabledButton : styles.button}
-                    onClick={() => setRecentWrongPage((prev) => Math.max(0, prev - 1))}
-                    disabled={recentWrongPage === 0}
-                  >
-                    前の10問
-                  </button>
-                  <span style={{ color: "#6b7280", fontSize: 13 }}>
-                    {recentWrongPage + 1} / {recentWrongPageCount}ページ
-                  </span>
-                  <button
-                    style={recentWrongPage >= recentWrongPageCount - 1 ? styles.disabledButton : styles.button}
-                    onClick={() => setRecentWrongPage((prev) => Math.min(recentWrongPageCount - 1, prev + 1))}
-                    disabled={recentWrongPage >= recentWrongPageCount - 1}
-                  >
-                    次の10問
-                  </button>
-                </div>
+          reviewWrongLogs.length === 0 ? <div>不正解ログがありません。</div> : (
+            <div>
+              {recentWrongPageItems.map((item) => (
+                <details key={item.logId} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
+                    {item.questionId}：{formatDateTime(item.answeredAt)} に不正解
+                  </summary>
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ marginBottom: 8 }}>{item.questionText || "問題文を取得できませんでした"}</div>
+                    <div style={{ fontSize: 13, color: "#6b7280" }}>単元：{item.unit || "未分類"}</div>
+                    <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.length ? item.choices.join(" / ") : "取得できませんでした"}</div>
+                    <div style={{ marginTop: 4 }}>選んだ答え：{item.selectedChoice}</div>
+                    <div style={{ fontWeight: 700 }}>正解：{item.correctAnswer}</div>
+                  </div>
+                </details>
+              ))}
+              <div style={{ ...styles.row, justifyContent: "space-between", marginTop: 12 }}>
+                <button style={recentWrongPage === 0 ? styles.disabledButton : styles.button} onClick={() => setRecentWrongPage((prev) => Math.max(0, prev - 1))} disabled={recentWrongPage === 0}>前の10件</button>
+                <span style={{ color: "#6b7280", fontSize: 13 }}>{recentWrongPage + 1} / {recentWrongPageCount}ページ</span>
+                <button style={recentWrongPage >= recentWrongPageCount - 1 ? styles.disabledButton : styles.button} onClick={() => setRecentWrongPage((prev) => Math.min(recentWrongPageCount - 1, prev + 1))} disabled={recentWrongPage >= recentWrongPageCount - 1}>次の10件</button>
               </div>
-            )}
-          </div>
+            </div>
+          )
         )}
       </div>
 
@@ -693,44 +668,34 @@ function StudentQuizView({
         <div style={styles.header}>
           <div>
             <h2 style={{ margin: 0 }}>これまで間違えた問題</h2>
-            <p style={{ color: "#6b7280", fontSize: 13, margin: "6px 0 0" }}>
-              単元を選んで、これまで間違えた問題を問題ごとに確認できます。
-            </p>
+            <p style={{ color: "#6b7280", fontSize: 13, margin: "6px 0 0" }}>単元を選び、問題ごとの正答率を確認できます。</p>
           </div>
           <button style={styles.button} onClick={() => setShowWrongByUnit((prev) => !prev)}>
             {showWrongByUnit ? "閉じる" : "単元別に見る"}
           </button>
         </div>
-
         {showWrongByUnit && (
           <div>
-            <div style={{ marginBottom: 12 }}>
-              <label style={styles.label}>確認する単元</label>
-              <select style={styles.input} value={wrongReviewUnit} onChange={(e) => setWrongReviewUnit(e.target.value)}>
-                <option value="all">すべての単元</option>
-                {wrongSummaryUnits.map((unit) => (
-                  <option key={unit} value={unit}>{unit}</option>
-                ))}
-              </select>
-            </div>
-
+            <label style={styles.label}>確認する単元</label>
+            <select style={styles.input} value={wrongReviewUnit} onChange={(e) => setWrongReviewUnit(e.target.value)}>
+              <option value="all">すべての単元</option>
+              {wrongSummaryUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+            </select>
             {filteredWrongQuestionSummary.length === 0 ? (
-              <div style={{ color: "#6b7280" }}>この単元の不正解ログはありません。</div>
-            ) : (
-              filteredWrongQuestionSummary.map((item) => (
-                <details key={item.questionId} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
-                  <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
-                    {item.questionId}：不正解 {item.wrongCount}回
-                  </summary>
-                  <div style={{ marginTop: 8 }}>
-                    <div style={{ marginBottom: 8 }}>{item.questionText || "問題文を取得できませんでした"}</div>
-                    <div style={{ fontSize: 13, color: "#6b7280" }}>単元：{item.unit || "未分類"}</div>
-                    <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.length ? item.choices.join(" / ") : "取得できませんでした"}</div>
-                    <div style={{ fontWeight: 700, marginTop: 4 }}>正解：{item.correctAnswer || "取得できませんでした"}</div>
-                  </div>
-                </details>
-              ))
-            )}
+              <div style={{ marginTop: 12 }}>この単元の不正解ログはありません。</div>
+            ) : filteredWrongQuestionSummary.map((item) => (
+              <details key={item.questionId} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
+                  {item.questionId}：正答率 {item.correctRate}%（{item.correctCount} / {item.totalCount}回）
+                </summary>
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ marginBottom: 8 }}>{item.questionText || "問題文を取得できませんでした"}</div>
+                  <div style={{ fontSize: 13, color: "#6b7280" }}>単元：{item.unit || "未分類"}</div>
+                  <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.length ? item.choices.join(" / ") : "取得できませんでした"}</div>
+                  <div style={{ fontWeight: 700, marginTop: 4 }}>正解：{item.correctAnswer || "取得できませんでした"}</div>
+                </div>
+              </details>
+            ))}
           </div>
         )}
       </div>
@@ -780,18 +745,27 @@ export default function OnlineTutorQuizApp() {
   };
 
   const fetchLogs = async () => {
-    const { data, error } = await supabase
-      .from("answer_logs")
-      .select("id, question_id, selected_choice, correct_answer, is_correct, unit, answered_at")
-      .order("answered_at", { ascending: false })
-      .limit(200);
+    const allLogs = [];
 
-    if (error) {
-      setDbError("解答ログの取得に失敗しました: " + error.message);
-      return;
+    for (let start = 0; start < MAX_LOGS; start += LOG_PAGE_SIZE) {
+      const end = Math.min(start + LOG_PAGE_SIZE - 1, MAX_LOGS - 1);
+      const { data, error } = await supabase
+        .from("answer_logs")
+        .select("id, question_id, selected_choice, correct_answer, is_correct, unit, answered_at")
+        .order("answered_at", { ascending: false })
+        .range(start, end);
+
+      if (error) {
+        setDbError("解答ログの取得に失敗しました: " + error.message);
+        return;
+      }
+
+      const page = data || [];
+      allLogs.push(...page);
+      if (page.length < LOG_PAGE_SIZE) break;
     }
 
-    setLogs(data || []);
+    setLogs(allLogs);
   };
 
   useEffect(() => {
@@ -863,24 +837,22 @@ export default function OnlineTutorQuizApp() {
           questionText: question ? question.questionText : "",
           choices: question ? question.choices : [],
         };
-      })
-      .slice(0, 30);
+      });
   }, [logs, questions]);
 
   const wrongQuestionSummary = useMemo(() => {
     const summaryMap = {};
 
     logs.forEach((log) => {
-      const isCorrect = log.is_correct || log.isCorrect;
-      if (isCorrect) return;
-
       const questionId = log.question_id || log.questionId;
       if (!questionId) return;
 
+      const question = questions.find((item) => item.id === questionId);
       if (!summaryMap[questionId]) {
-        const question = questions.find((item) => item.id === questionId);
         summaryMap[questionId] = {
           questionId,
+          totalCount: 0,
+          correctCount: 0,
           wrongCount: 0,
           unit: log.unit || (question ? question.unit : "未分類"),
           questionText: question ? question.questionText : "",
@@ -889,10 +861,21 @@ export default function OnlineTutorQuizApp() {
         };
       }
 
-      summaryMap[questionId].wrongCount += 1;
+      summaryMap[questionId].totalCount += 1;
+      if (log.is_correct || log.isCorrect) {
+        summaryMap[questionId].correctCount += 1;
+      } else {
+        summaryMap[questionId].wrongCount += 1;
+      }
     });
 
-    return Object.values(summaryMap).sort((a, b) => b.wrongCount - a.wrongCount || a.questionId.localeCompare(b.questionId));
+    return Object.values(summaryMap)
+      .filter((item) => item.wrongCount > 0)
+      .map((item) => ({
+        ...item,
+        correctRate: item.totalCount ? Math.round((item.correctCount / item.totalCount) * 100) : 0,
+      }))
+      .sort((a, b) => a.correctRate - b.correctRate || b.totalCount - a.totalCount || a.questionId.localeCompare(b.questionId));
   }, [logs, questions]);
 
   const startQuiz = () => {
@@ -910,7 +893,7 @@ export default function OnlineTutorQuizApp() {
     setCurrentChoices([]);
     setSelectedChoice("");
     setAnswered(false);
-    if (isTeacher) fetchLogs();
+    fetchLogs();
   };
 
   const nextQuestion = () => {
@@ -966,9 +949,7 @@ export default function OnlineTutorQuizApp() {
       return;
     }
 
-    if (isTeacher) {
-      setLogs((prev) => [data || { ...logRow, id: makeId(), answered_at: new Date().toISOString() }, ...prev]);
-    }
+    setLogs((prev) => [data || { ...logRow, id: makeId(), answered_at: new Date().toISOString() }, ...prev].slice(0, MAX_LOGS));
   };
 
   const addQuestion = async (e) => {
@@ -1377,10 +1358,11 @@ const confirmMessage =
                   wrongQuestionSummary.map((item) => (
                     <details key={item.questionId} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
                       <summary style={{ cursor: "pointer", fontWeight: 700, color: "#991b1b" }}>
-                        {item.questionId}：不正解 {item.wrongCount}回
+                        {item.questionId}：正答率 {item.correctRate}%（{item.correctCount} / {item.totalCount}回）
                       </summary>
                       <div style={{ marginTop: 8 }}>
                         <div style={{ marginBottom: 8 }}>{item.questionText || "問題文を取得できませんでした"}</div>
+                        <div style={{ fontSize: 13, color: "#6b7280" }}>単元：{item.unit || "未分類"}</div>
                         <div style={{ fontSize: 13, color: "#6b7280" }}>選択肢：{item.choices.length ? item.choices.join(" / ") : "取得できませんでした"}</div>
                         <div style={{ fontWeight: 700, marginTop: 4 }}>正解：{item.correctAnswer || "取得できませんでした"}</div>
                       </div>
