@@ -5,10 +5,31 @@ const SUPABASE_URL = "https://gqdxveunrlkjpryabexd.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZHh2ZXVucmxranByeWFiZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MDcxMTIsImV4cCI6MjA5MzI4MzExMn0.AudkiJsUAc6naoMeNJI0Qu4p8z8UXxRMf4YgR0gc3SQ";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.8.0";
 const MAX_LOGS = 10000;
 const LOG_PAGE_SIZE = 1000;
+
+const TEST_MODES = [
+  {
+    id: "polaris",
+    label: "ポラリスモード",
+    questionPrefix: "PO",
+    passRate: 95,
+    expectedQuestionCount: 200,
+  },
+];
+
 const CHANGELOG = [
+  {
+    version: "1.8.0",
+    date: "2026-07-12",
+    items: [
+      "問題番号がPOで始まる問題を全問出題するポラリステストモードを追加",
+      "テスト終了後に正答率を計算し、95%以上を合格として判定",
+      "合格時は花丸、不合格時は『やりなおし！』を表示",
+      "今後ほかの教材を追加しやすいテストモード設定構造を追加",
+    ],
+  },
   {
     version: "1.7.0",
     date: "2026-07-10",
@@ -502,7 +523,7 @@ function runSelfTests() {
     },
     {
       name: "app version is defined",
-      pass: APP_VERSION === "1.7.0",
+      pass: APP_VERSION === "1.8.0",
     },
   ];
 }
@@ -607,6 +628,11 @@ function StudentQuizView({
   clearWrongAnswers = () => {},
   reviewWrongLogs = [],
   wrongQuestionSummary = [],
+  quizMode = "practice",
+  setQuizMode = () => {},
+  testModes = [],
+  availableQuestionCount = 0,
+  testResult = null,
 }) {
   const [showRecentWrongLogs, setShowRecentWrongLogs] = useState(false);
   const [recentWrongPage, setRecentWrongPage] = useState(0);
@@ -626,38 +652,106 @@ function StudentQuizView({
     return wrongQuestionSummary.filter((item) => (item.unit || "未分類") === wrongReviewUnit);
   }, [wrongQuestionSummary, wrongReviewUnit]);
 
+  const activeTestMode = testModes.find((item) => item.id === quizMode);
+  const isTestMode = Boolean(activeTestMode);
+  const canStart = availableQuestionCount > 0 && !loading;
+
   return (
     <div>
       <div style={styles.card}>
         <div style={styles.header}>
-          <h2 style={{ margin: 0 }}>英語4択トレーニング</h2>
+          <h2 style={{ margin: 0 }}>{isTestMode ? activeTestMode.label : "英語4択トレーニング"}</h2>
           <div style={styles.row}>
             {currentQuestion && (
               <button style={styles.button} onClick={stopQuiz}>途中でやめる</button>
             )}
-            <button style={questions.length === 0 || loading ? styles.disabledButton : styles.primaryButton} onClick={startQuiz} disabled={questions.length === 0 || loading}>
-              出題開始
+            <button style={!canStart ? styles.disabledButton : styles.primaryButton} onClick={startQuiz} disabled={!canStart}>
+              {isTestMode ? "テスト開始" : "出題開始"}
             </button>
           </div>
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <label style={styles.label}>出題する単元</label>
-          <select style={styles.input} value={selectedUnit} onChange={(e) => setSelectedUnit(e.target.value)}>
-            <option value="all">すべての単元</option>
-            {units.map((unit) => (
-              <option key={unit} value={unit}>{unit}</option>
+          <label style={styles.label}>モード</label>
+          <div style={styles.row}>
+            <button
+              type="button"
+              style={quizMode === "practice" ? styles.primaryButton : styles.button}
+              onClick={() => setQuizMode("practice")}
+              disabled={Boolean(currentQuestion)}
+            >
+              通常練習
+            </button>
+            {testModes.map((testMode) => (
+              <button
+                key={testMode.id}
+                type="button"
+                style={quizMode === testMode.id ? styles.primaryButton : styles.button}
+                onClick={() => setQuizMode(testMode.id)}
+                disabled={Boolean(currentQuestion)}
+              >
+                {testMode.label}
+              </button>
             ))}
-          </select>
-          <p style={{ color: "#6b7280", fontSize: 13, marginTop: 6 }}>
-            選んだ単元だけからランダムに出題します。
-          </p>
+          </div>
         </div>
 
-        {!currentQuestion ? (
-          <div style={{ padding: 24, textAlign: "center", color: "#6b7280", border: "1px dashed #d1d5db", borderRadius: 12 }}>
-            出題開始を押すと、ランダムに問題が出ます。
+        {!isTestMode ? (
+          <div style={{ marginBottom: 16 }}>
+            <label style={styles.label}>出題する単元</label>
+            <select style={styles.input} value={selectedUnit} onChange={(e) => setSelectedUnit(e.target.value)}>
+              <option value="all">すべての単元</option>
+              {units.map((unit) => (
+                <option key={unit} value={unit}>{unit}</option>
+              ))}
+            </select>
+            <p style={{ color: "#6b7280", fontSize: 13, marginTop: 6 }}>
+              選んだ単元だけからランダムに出題します。
+            </p>
           </div>
+        ) : (
+          <div style={{ ...styles.card, background: "#f9fafb" }}>
+            <div style={{ fontWeight: 700 }}>{activeTestMode.label}</div>
+            <div style={{ marginTop: 6 }}>
+              問題番号が「{activeTestMode.questionPrefix}」で始まる問題を全問出題します。
+            </div>
+            <div style={{ marginTop: 4 }}>
+              登録問題数：{availableQuestionCount}問 ／ 合格基準：正答率{activeTestMode.passRate}%以上
+            </div>
+            {availableQuestionCount !== activeTestMode.expectedQuestionCount && (
+              <div style={{ marginTop: 8, color: "#92400e", fontSize: 13 }}>
+                想定は{activeTestMode.expectedQuestionCount}問ですが、現在は{availableQuestionCount}問登録されています。
+              </div>
+            )}
+          </div>
+        )}
+
+        {!currentQuestion ? (
+          testResult && isTestMode ? (
+            <div style={{ padding: 28, textAlign: "center", border: "1px solid #d1d5db", borderRadius: 12, background: "white" }}>
+              {testResult.passed ? (
+                <div style={{ fontSize: 96, lineHeight: 1 }}>💮</div>
+              ) : (
+                <div style={{ fontSize: 40, fontWeight: 800, color: "#dc2626" }}>やりなおし！</div>
+              )}
+              <div style={{ fontSize: 24, fontWeight: 700, marginTop: 16 }}>
+                正答率 {testResult.rate}%
+              </div>
+              <div style={{ marginTop: 8 }}>
+                {testResult.correctCount}問正解 / {testResult.totalCount}問
+              </div>
+              <div style={{ marginTop: 6, color: "#6b7280" }}>
+                合格基準：{testResult.passRate}%以上
+              </div>
+              <button style={{ ...styles.primaryButton, marginTop: 18 }} onClick={startQuiz}>
+                もう一度テストする
+              </button>
+            </div>
+          ) : (
+            <div style={{ padding: 24, textAlign: "center", color: "#6b7280", border: "1px dashed #d1d5db", borderRadius: 12 }}>
+              {isTestMode ? "テスト開始を押すと、対象問題をすべて出題します。" : "出題開始を押すと、ランダムに問題が出ます。"}
+            </div>
+          )
         ) : (
           <div>
             <div style={{ marginBottom: 12 }}>
@@ -688,7 +782,9 @@ function StudentQuizView({
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>{selectedChoice === currentQuestion.correctAnswer ? "正解" : "不正解"}</div>
                 <div>問題番号：{currentQuestion.id}</div>
                 <div>正解：{currentQuestion.correctAnswer}</div>
-                <button style={{ ...styles.primaryButton, marginTop: 12 }} onClick={nextQuestion}>次の問題へ</button>
+                <button style={{ ...styles.primaryButton, marginTop: 12 }} onClick={nextQuestion}>
+                  {isTestMode && currentIndex === quizQueue.length - 1 ? "結果を見る" : "次の問題へ"}
+                </button>
               </div>
             )}
           </div>
@@ -815,6 +911,9 @@ export default function OnlineTutorQuizApp() {
   const [teacherTab, setTeacherTab] = useState("quiz");
   const [wrongAnswers, setWrongAnswers] = useState([]);
   const [selectedUnit, setSelectedUnit] = useState("all");
+  const [quizMode, setQuizMode] = useState("practice");
+  const [testCorrectCount, setTestCorrectCount] = useState(0);
+  const [testResult, setTestResult] = useState(null);
 
   const fetchQuestions = async () => {
     setLoading(true);
@@ -894,6 +993,21 @@ export default function OnlineTutorQuizApp() {
     return questions.filter((question) => (question.unit || "未分類") === selectedUnit);
   }, [questions, selectedUnit]);
 
+  const activeTestMode = useMemo(
+    () => TEST_MODES.find((item) => item.id === quizMode) || null,
+    [quizMode]
+  );
+
+  const testModeQuestions = useMemo(() => {
+    if (!activeTestMode) return [];
+    const prefix = activeTestMode.questionPrefix.toUpperCase();
+    return questions
+      .filter((question) => String(question.id || "").toUpperCase().startsWith(prefix))
+      .sort((a, b) => String(a.id).localeCompare(String(b.id), "ja", { numeric: true }));
+  }, [questions, activeTestMode]);
+
+  const availableQuestionCount = activeTestMode ? testModeQuestions.length : filteredQuestions.length;
+
   const wrongQuestionCounts = useMemo(() => {
     const countMap = {};
     logs.forEach((log) => {
@@ -962,11 +1076,13 @@ export default function OnlineTutorQuizApp() {
   }, [logs, questions]);
 
   const startQuiz = () => {
-    const queue = shuffleArray(filteredQuestions);
+    const queue = activeTestMode ? [...testModeQuestions] : shuffleArray(filteredQuestions);
     setQuizQueue(queue);
     setCurrentIndex(0);
     setSelectedChoice("");
     setAnswered(false);
+    setTestCorrectCount(0);
+    setTestResult(null);
     setCurrentChoices(queue[0] ? shuffleArray(queue[0].choices) : []);
   };
 
@@ -976,12 +1092,27 @@ export default function OnlineTutorQuizApp() {
     setCurrentChoices([]);
     setSelectedChoice("");
     setAnswered(false);
+    setTestCorrectCount(0);
+    setTestResult(null);
     fetchLogs();
   };
 
   const nextQuestion = () => {
     const nextIndex = currentIndex + 1;
     if (nextIndex >= quizQueue.length) {
+      if (activeTestMode && quizQueue.length > 0) {
+        const rate = Math.round((testCorrectCount / quizQueue.length) * 1000) / 10;
+        setTestResult({
+          modeId: activeTestMode.id,
+          modeLabel: activeTestMode.label,
+          correctCount: testCorrectCount,
+          totalCount: quizQueue.length,
+          rate,
+          passRate: activeTestMode.passRate,
+          passed: rate >= activeTestMode.passRate,
+        });
+      }
+
       setQuizQueue([]);
       setCurrentIndex(0);
       setCurrentChoices([]);
@@ -1003,6 +1134,10 @@ export default function OnlineTutorQuizApp() {
     const isCorrect = choice === currentQuestion.correctAnswer;
     setSelectedChoice(choice);
     setAnswered(true);
+
+    if (activeTestMode && isCorrect) {
+      setTestCorrectCount((prev) => prev + 1);
+    }
 
     if (!isCorrect) {
       setWrongAnswers((prev) => [
@@ -1267,6 +1402,14 @@ const confirmMessage =
             clearWrongAnswers={() => setWrongAnswers([])}
             reviewWrongLogs={reviewWrongLogs}
             wrongQuestionSummary={wrongQuestionSummary}
+            quizMode={quizMode}
+            setQuizMode={(value) => {
+              setQuizMode(value);
+              setTestResult(null);
+            }}
+            testModes={TEST_MODES}
+            availableQuestionCount={availableQuestionCount}
+            testResult={testResult}
           />
           </div>
         ) : (
@@ -1307,6 +1450,14 @@ const confirmMessage =
                 answerQuestion={answerQuestion}
                 nextQuestion={nextQuestion}
                 loading={loading}
+                quizMode={quizMode}
+                setQuizMode={(value) => {
+                  setQuizMode(value);
+                  setTestResult(null);
+                }}
+                testModes={TEST_MODES}
+                availableQuestionCount={availableQuestionCount}
+                testResult={testResult}
               />
             )}
 
