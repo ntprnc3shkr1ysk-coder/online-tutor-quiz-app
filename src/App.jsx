@@ -5,7 +5,7 @@ const SUPABASE_URL = "https://gqdxveunrlkjpryabexd.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZHh2ZXVucmxranByeWFiZXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3MDcxMTIsImV4cCI6MjA5MzI4MzExMn0.AudkiJsUAc6naoMeNJI0Qu4p8z8UXxRMf4YgR0gc3SQ";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = "1.8.0";
+const APP_VERSION = "1.8.1";
 const MAX_LOGS = 10000;
 const LOG_PAGE_SIZE = 1000;
 
@@ -20,6 +20,15 @@ const TEST_MODES = [
 ];
 
 const CHANGELOG = [
+  {
+    version: "1.8.1",
+    date: "2026-07-12",
+    items: [
+      "テスト合格結果をSupabaseに保存し、再読み込み後も合格済み表示を維持",
+      "生徒画面に教材ごとの合格状況と合格日時を表示",
+      "先生画面にテスト合格履歴タブを追加し、合格日時・正答率を確認可能に変更",
+    ],
+  },
   {
     version: "1.8.0",
     date: "2026-07-12",
@@ -523,7 +532,7 @@ function runSelfTests() {
     },
     {
       name: "app version is defined",
-      pass: APP_VERSION === "1.8.0",
+      pass: APP_VERSION === "1.8.1",
     },
   ];
 }
@@ -633,6 +642,7 @@ function StudentQuizView({
   testModes = [],
   availableQuestionCount = 0,
   testResult = null,
+  testPassRecords = [],
 }) {
   const [showRecentWrongLogs, setShowRecentWrongLogs] = useState(false);
   const [recentWrongPage, setRecentWrongPage] = useState(0);
@@ -655,6 +665,9 @@ function StudentQuizView({
   const activeTestMode = testModes.find((item) => item.id === quizMode);
   const isTestMode = Boolean(activeTestMode);
   const canStart = availableQuestionCount > 0 && !loading;
+  const activePassRecord = activeTestMode
+    ? testPassRecords.find((record) => record.mode_id === activeTestMode.id && record.passed)
+    : null;
 
   return (
     <div>
@@ -718,6 +731,14 @@ function StudentQuizView({
             <div style={{ marginTop: 4 }}>
               登録問題数：{availableQuestionCount}問 ／ 合格基準：正答率{activeTestMode.passRate}%以上
             </div>
+            {activePassRecord && (
+              <div style={{ marginTop: 10, padding: 10, border: "1px solid #86efac", borderRadius: 8, background: "#f0fdf4", color: "#166534" }}>
+                <strong>💮 合格済み</strong>
+                <div style={{ marginTop: 4, fontSize: 13 }}>
+                  合格日：{formatDateTime(activePassRecord.completed_at)} ／ 正答率：{activePassRecord.rate}%
+                </div>
+              </div>
+            )}
             {availableQuestionCount !== activeTestMode.expectedQuestionCount && (
               <div style={{ marginTop: 8, color: "#92400e", fontSize: 13 }}>
                 想定は{activeTestMode.expectedQuestionCount}問ですが、現在は{availableQuestionCount}問登録されています。
@@ -914,6 +935,7 @@ export default function OnlineTutorQuizApp() {
   const [quizMode, setQuizMode] = useState("practice");
   const [testCorrectCount, setTestCorrectCount] = useState(0);
   const [testResult, setTestResult] = useState(null);
+  const [testPassRecords, setTestPassRecords] = useState([]);
 
   const fetchQuestions = async () => {
     setLoading(true);
@@ -957,9 +979,26 @@ export default function OnlineTutorQuizApp() {
     setLogs(allLogs);
   };
 
+
+  const fetchTestPassRecords = async () => {
+    const { data, error } = await supabase
+      .from("test_results")
+      .select("id, mode_id, mode_label, correct_count, total_count, rate, pass_rate, passed, completed_at")
+      .eq("passed", true)
+      .order("completed_at", { ascending: false });
+
+    if (error) {
+      setDbError("テスト合格履歴の取得に失敗しました: " + error.message);
+      return;
+    }
+
+    setTestPassRecords(data || []);
+  };
+
   useEffect(() => {
     fetchQuestions();
     fetchLogs();
+    fetchTestPassRecords();
   }, [isTeacher]);
 
   const currentQuestion = quizQueue[currentIndex];
@@ -1097,20 +1136,50 @@ export default function OnlineTutorQuizApp() {
     fetchLogs();
   };
 
-  const nextQuestion = () => {
+  const nextQuestion = async () => {
     const nextIndex = currentIndex + 1;
     if (nextIndex >= quizQueue.length) {
       if (activeTestMode && quizQueue.length > 0) {
         const rate = Math.round((testCorrectCount / quizQueue.length) * 1000) / 10;
-        setTestResult({
+        const passed = rate >= activeTestMode.passRate;
+        const completedAt = new Date().toISOString();
+        const result = {
           modeId: activeTestMode.id,
           modeLabel: activeTestMode.label,
           correctCount: testCorrectCount,
           totalCount: quizQueue.length,
           rate,
           passRate: activeTestMode.passRate,
-          passed: rate >= activeTestMode.passRate,
-        });
+          passed,
+          completedAt,
+        };
+
+        setTestResult(result);
+
+        if (passed) {
+          const resultRow = {
+            mode_id: activeTestMode.id,
+            mode_label: activeTestMode.label,
+            correct_count: testCorrectCount,
+            total_count: quizQueue.length,
+            rate,
+            pass_rate: activeTestMode.passRate,
+            passed: true,
+            completed_at: completedAt,
+          };
+
+          const { data, error } = await supabase
+            .from("test_results")
+            .insert([resultRow])
+            .select()
+            .single();
+
+          if (error) {
+            setDbError("合格結果の保存に失敗しました: " + error.message);
+          } else {
+            setTestPassRecords((prev) => [data || { ...resultRow, id: makeId() }, ...prev]);
+          }
+        }
       }
 
       setQuizQueue([]);
@@ -1118,7 +1187,7 @@ export default function OnlineTutorQuizApp() {
       setCurrentChoices([]);
       setSelectedChoice("");
       setAnswered(false);
-      if (isTeacher) fetchLogs();
+      fetchLogs();
       return;
     }
 
@@ -1334,6 +1403,7 @@ const confirmMessage =
   const refreshAll = () => {
     fetchQuestions();
     fetchLogs();
+    fetchTestPassRecords();
   };
 
   return (
@@ -1410,6 +1480,7 @@ const confirmMessage =
             testModes={TEST_MODES}
             availableQuestionCount={availableQuestionCount}
             testResult={testResult}
+            testPassRecords={testPassRecords}
           />
           </div>
         ) : (
@@ -1424,6 +1495,7 @@ const confirmMessage =
                 ["list", "問題一覧"],
                 ["logs", "ログ"],
                 ["wrong", "間違えた問題"],
+                ["passes", "テスト合格履歴"],
                 ["updates", "更新履歴"],
                 ["tests", "テスト"],
               ].map(([key, label]) => (
@@ -1458,6 +1530,7 @@ const confirmMessage =
                 testModes={TEST_MODES}
                 availableQuestionCount={availableQuestionCount}
                 testResult={testResult}
+                testPassRecords={testPassRecords}
               />
             )}
 
@@ -1599,6 +1672,38 @@ const confirmMessage =
                         <div style={{ fontWeight: 700, marginTop: 4 }}>正解：{item.correctAnswer || "取得できませんでした"}</div>
                       </div>
                     </details>
+                  ))
+                )}
+              </div>
+            )}
+
+            {teacherTab === "passes" && (
+              <div style={styles.card}>
+                <div style={styles.header}>
+                  <div>
+                    <h2 style={{ margin: 0 }}>テスト合格履歴</h2>
+                    <p style={{ color: "#6b7280", fontSize: 13, margin: "6px 0 0" }}>
+                      生徒がテストモードで合格した日時と成績を確認できます。
+                    </p>
+                  </div>
+                  <button style={styles.button} onClick={fetchTestPassRecords}>更新</button>
+                </div>
+                {testPassRecords.length === 0 ? (
+                  <div>まだ合格記録がありません。</div>
+                ) : (
+                  testPassRecords.map((record) => (
+                    <div key={record.id} style={{ borderTop: "1px solid #e5e7eb", paddingTop: 12, marginTop: 12 }}>
+                      <div style={styles.row}>
+                        <span style={{ ...styles.badge, background: "#f0fdf4", borderColor: "#86efac", color: "#166534", fontWeight: 700 }}>
+                          💮 合格
+                        </span>
+                        <strong>{record.mode_label}</strong>
+                        <span style={{ color: "#6b7280", fontSize: 13 }}>{formatDateTime(record.completed_at)}</span>
+                      </div>
+                      <div style={{ marginTop: 6 }}>
+                        正答率 {record.rate}%（{record.correct_count} / {record.total_count}問）
+                      </div>
+                    </div>
                   ))
                 )}
               </div>
