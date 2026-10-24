@@ -74,3 +74,11 @@ revoke all on function public.vocab_snapshot() from public;
 grant execute on function public.vocab_snapshot() to anon,authenticated;
 notify pgrst,'reload schema';
 
+
+
+-- Hide cards without removing their learning history.
+alter table public.vocab_cards add column if not exists deleted boolean not null default false;
+grant update (deleted) on public.vocab_cards to anon;
+create policy vocab_cards_link_hide on public.vocab_cards for update to anon
+using (encode(digest(coalesce(current_setting('request.headers',true)::jsonb->>'x-vocab-key',''),'sha256'),'hex')='567f7f943e4141d857fcbf8ed4883414fcbaa6ab874775f3f5c7ecccd9ec60ab')
+with check (deleted=true and encode(digest(coalesce(current_setting('request.headers',true)::jsonb->>'x-vocab-key',''),'sha256'),'hex')='567f7f943e4141d857fcbf8ed4883414fcbaa6ab874775f3f5c7ecccd9ec60ab');
